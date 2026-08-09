@@ -6,6 +6,7 @@ import { LockScreen } from "@/components/LockScreen";
 import { MonthCalendar } from "@/components/MonthCalendar";
 import { NicknameSetup } from "@/components/NicknameSetup";
 import { SplashScreen } from "@/components/SplashScreen";
+import { fetchCalendarLockInfo } from "@/lib/api";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { getStoredDisplayName, isDeviceUnlocked } from "@/lib/types";
 
@@ -22,16 +23,47 @@ export default function HomePage() {
   const [displayName, setDisplayName] = useState("");
   const [showSplash, setShowSplash] = useState(false);
   const [configured, setConfigured] = useState(true);
+  const [lockPassword, setLockPassword] = useState<string | null>(null);
+  const [passwordVersion, setPasswordVersion] = useState(1);
+  const [loadingLock, setLoadingLock] = useState(true);
 
   useEffect(() => {
     setConfigured(isSupabaseConfigured());
     const name = getStoredDisplayName().trim();
-    const ok = isDeviceUnlocked();
     setDisplayName(name);
-    setUnlocked(ok);
-    // 비밀번호·별명까지 끝난 기기만 스플래시
-    setShowSplash(ok && Boolean(name));
-    setReady(true);
+
+    let cancelled = false;
+
+    (async () => {
+      let version = 1;
+      let password: string | null = null;
+
+      if (isSupabaseConfigured()) {
+        try {
+          const info = await fetchCalendarLockInfo(FIXED_CALENDAR.id);
+          if (info) {
+            version = info.password_version;
+            password = info.app_password;
+          }
+        } catch (e) {
+          console.warn("[lock] fetchCalendarLockInfo failed", e);
+        }
+      }
+
+      if (cancelled) return;
+
+      const ok = isDeviceUnlocked(version);
+      setLockPassword(password);
+      setPasswordVersion(version);
+      setUnlocked(ok);
+      setShowSplash(ok && Boolean(name));
+      setLoadingLock(false);
+      setReady(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const finishSplash = useCallback(() => setShowSplash(false), []);
@@ -59,7 +91,14 @@ export default function HomePage() {
   }
 
   if (!unlocked) {
-    return <LockScreen onUnlocked={handleUnlocked} />;
+    return (
+      <LockScreen
+        onUnlocked={handleUnlocked}
+        expectedPassword={lockPassword}
+        passwordVersion={passwordVersion}
+        loadingLock={loadingLock}
+      />
+    );
   }
 
   if (!displayName) {

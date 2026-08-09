@@ -5,6 +5,14 @@ export interface Calendar {
   name: string;
   share_code: string;
   created_at: string;
+  app_password?: string;
+  password_version?: number;
+}
+
+export interface CalendarLockInfo {
+  id: string;
+  app_password: string;
+  password_version: number;
 }
 
 export interface Shift {
@@ -124,6 +132,7 @@ const STORAGE_CALENDAR_ID = "shift-calendar-id";
 const STORAGE_SHARE_CODE = "shift-calendar-share-code";
 const STORAGE_DISPLAY_NAME = "shift-calendar-display-name";
 const STORAGE_UNLOCKED = "shift-calendar-unlocked-v3";
+const STORAGE_PASSWORD_VERSION = "shift-calendar-password-version";
 const STORAGE_SEEN_CHANGES = "shift-calendar-seen-changes";
 const STORAGE_DEVICE_ID = "shift-calendar-device-id";
 
@@ -175,13 +184,29 @@ export function storeDisplayName(displayName: string) {
   localStorage.setItem(STORAGE_DISPLAY_NAME, displayName.trim());
 }
 
-export function isDeviceUnlocked(): boolean {
+export function isDeviceUnlocked(currentVersion?: number): boolean {
   if (typeof window === "undefined") return false;
-  return localStorage.getItem(STORAGE_UNLOCKED) === "1";
+  if (localStorage.getItem(STORAGE_UNLOCKED) !== "1") return false;
+
+  // 서버 비밀번호 버전이 올라가면 재잠금
+  if (typeof currentVersion === "number") {
+    const stored = Number(localStorage.getItem(STORAGE_PASSWORD_VERSION) ?? "0");
+    if (!Number.isFinite(stored) || stored < currentVersion) {
+      localStorage.removeItem(STORAGE_UNLOCKED);
+      return false;
+    }
+  }
+  return true;
 }
 
-export function unlockDevice() {
+export function unlockDevice(passwordVersion = 1) {
   localStorage.setItem(STORAGE_UNLOCKED, "1");
+  localStorage.setItem(STORAGE_PASSWORD_VERSION, String(passwordVersion));
+}
+
+export function lockDevice() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(STORAGE_UNLOCKED);
 }
 
 /** 이 기기에서 확인한 변경 로그 ID 목록 */

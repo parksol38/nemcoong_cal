@@ -16,10 +16,17 @@ import {
 export async function createCalendar(name: string): Promise<Calendar> {
   const supabase = getSupabase();
   const share_code = generateShareCode();
+  const fallback =
+    process.env.NEXT_PUBLIC_APP_PASSWORD?.trim() || "930308";
 
   const { data, error } = await supabase
     .from("calendars")
-    .insert({ name, share_code })
+    .insert({
+      name,
+      share_code,
+      app_password: fallback,
+      password_version: 1,
+    })
     .select()
     .single();
 
@@ -39,6 +46,37 @@ export async function findCalendarByShareCode(
 
   if (error) throw error;
   return data as Calendar | null;
+}
+
+/** 잠금 검증용: 달력 비밀번호·버전 */
+export async function fetchCalendarLockInfo(
+  calendarId: string,
+): Promise<{ app_password: string; password_version: number } | null> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("calendars")
+    .select("app_password, password_version")
+    .eq("id", calendarId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+
+  const row = data as {
+    app_password?: string | null;
+    password_version?: number | null;
+  };
+
+  const fallback =
+    process.env.NEXT_PUBLIC_APP_PASSWORD?.trim() || "930308";
+
+  return {
+    app_password: (row.app_password ?? "").trim() || fallback,
+    password_version:
+      typeof row.password_version === "number" && row.password_version > 0
+        ? row.password_version
+        : 1,
+  };
 }
 
 export async function fetchShifts(
