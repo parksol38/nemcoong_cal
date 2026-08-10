@@ -107,15 +107,23 @@ export async function upsertShift(input: {
   note: string;
   updatedBy: string;
   existingId?: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  extraHours?: number | null;
 }): Promise<Shift> {
   const supabase = getSupabase();
 
+  const extra = Number(input.extraHours);
   const payload = {
     calendar_id: input.calendarId,
     date: input.date,
     shift_type: input.shiftType,
     note: input.note.trim(),
     updated_by: input.updatedBy.trim(),
+    start_time: input.startTime ?? null,
+    end_time: input.endTime ?? null,
+    extra_hours:
+      Number.isFinite(extra) && extra > 0 ? Math.round(extra * 10) / 10 : 0,
   };
 
   if (input.existingId) {
@@ -163,6 +171,10 @@ export async function upsertShiftsBulk(input: {
       shift_type: item.shiftType,
       note: (item.note ?? "").trim(),
       updated_by: input.updatedBy.trim(),
+      // 패턴 채우기는 고정 근무만 — 자원 시간 초기화
+      start_time: null,
+      end_time: null,
+      extra_hours: 0,
     }));
 
     const { data, error } = await supabase

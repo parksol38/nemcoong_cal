@@ -27,7 +27,7 @@ export function CalendarHeader({
     );
 
   return (
-    <header className="sticky top-0 z-20 border-b border-black/5 bg-[#F2F2F7]/80 backdrop-blur-xl">
+    <header className="sticky top-0 z-20 border-b border-black/5 bg-[#F2F2F7]/80 backdrop-blur-xl dark:border-white/10 dark:bg-[#0B0F14]/85">
       <div className="mx-auto flex max-w-3xl items-center justify-between gap-2 px-3 py-2.5 safe-top sm:px-4 sm:py-3">
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
           <Image
@@ -47,7 +47,7 @@ export function CalendarHeader({
               onClick={onOpenMonthPicker}
               className="mt-0.5 inline-flex max-w-full items-center gap-0.5 rounded-lg text-left transition active:scale-[0.98]"
             >
-              <h1 className="truncate text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">
+              <h1 className="truncate text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100 sm:text-2xl">
                 {format(currentMonth, "yyyy년 M월", { locale: ko })}
               </h1>
               <ChevronDown className="h-5 w-5 shrink-0 text-gray-400" />
@@ -61,7 +61,7 @@ export function CalendarHeader({
               type="button"
               aria-label="설정"
               onClick={onOpenSettings}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-500 shadow-sm transition active:scale-95"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-gray-500 shadow-sm transition active:scale-95 dark:bg-[#161B22] dark:text-gray-300 dark:shadow-black/30"
             >
               <Settings className="h-4 w-4" />
             </button>
@@ -69,7 +69,7 @@ export function CalendarHeader({
           <button
             type="button"
             onClick={onToday}
-            className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-[#007AFF] shadow-sm transition active:scale-95"
+            className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-[#007AFF] shadow-sm transition active:scale-95 dark:bg-[#161B22] dark:shadow-black/30"
           >
             오늘
           </button>

@@ -68,7 +68,7 @@ export function SharedMessageBoard({
           <button
             type="button"
             onClick={startEdit}
-            className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-[#007AFF] shadow-sm transition active:scale-95"
+            className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-[#007AFF] shadow-sm transition active:scale-95 dark:bg-[#161B22] dark:shadow-black/30"
           >
             <Pencil className="h-3 w-3" />
             {message ? "수정" : "남기기"}
@@ -85,7 +85,7 @@ export function SharedMessageBoard({
       {editing ? (
         <form
           onSubmit={handleSubmit}
-          className="rounded-2xl bg-white px-3.5 py-3 shadow-sm"
+          className="rounded-2xl bg-white px-3.5 py-3 shadow-sm dark:bg-[#161B22] dark:shadow-black/20"
         >
           <textarea
             value={draft}
@@ -97,7 +97,7 @@ export function SharedMessageBoard({
             maxLength={200}
             autoFocus
             placeholder="상대에게 남길 말을 적어 주세요"
-            className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#007AFF] focus:bg-white focus:ring-2 focus:ring-[#007AFF]/20"
+            className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#007AFF] focus:bg-white focus:ring-2 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-white/5 dark:text-gray-100 dark:focus:bg-[#0B0F14]"
           />
           <div className="mt-1.5 flex items-center justify-between gap-2">
             <p className="text-[10px] text-gray-400">
@@ -110,7 +110,7 @@ export function SharedMessageBoard({
                   setEditing(false);
                   setLocalError(null);
                 }}
-                className="rounded-xl bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-600 transition active:scale-95"
+                className="rounded-xl bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-600 transition active:scale-95 dark:bg-white/10 dark:text-gray-300"
               >
                 취소
               </button>
@@ -128,12 +128,12 @@ export function SharedMessageBoard({
           ) : null}
         </form>
       ) : loading ? (
-        <p className="rounded-2xl bg-white/70 px-4 py-5 text-center text-xs text-gray-400">
+        <p className="rounded-2xl bg-white/70 px-4 py-5 text-center text-xs text-gray-400 dark:bg-[#161B22]/70">
           불러오는 중…
         </p>
       ) : message ? (
-        <div className="rounded-2xl bg-white px-4 py-3.5 shadow-sm">
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">
+        <div className="rounded-2xl bg-white px-4 py-3.5 shadow-sm dark:bg-[#161B22] dark:shadow-black/20">
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800 dark:text-gray-100">
             {message.body}
           </p>
           <p className="mt-2 text-[11px] text-gray-400">
@@ -147,7 +147,7 @@ export function SharedMessageBoard({
         <button
           type="button"
           onClick={startEdit}
-          className="w-full rounded-2xl bg-white/70 px-4 py-5 text-center text-xs text-gray-400 transition active:scale-[0.99]"
+          className="w-full rounded-2xl bg-white/70 px-4 py-5 text-center text-xs text-gray-400 transition active:scale-[0.99] dark:bg-[#161B22]/70"
         >
           아직 메시지가 없어요. 눌러서 남겨 보세요.
         </button>

@@ -84,7 +84,7 @@ export default function HomePage() {
 
   if (!ready) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-[#F2F2F7]">
+      <div className="flex min-h-dvh items-center justify-center bg-[#F2F2F7] dark:bg-[#0B0F14]">
         <div className="h-8 w-8 animate-pulse rounded-full bg-[#007AFF]/30" />
       </div>
     );
@@ -111,12 +111,12 @@ export default function HomePage() {
 
   if (!configured) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-[#F2F2F7] px-6">
-        <div className="max-w-md rounded-3xl bg-white p-6 text-center shadow-xl">
+      <div className="flex min-h-dvh items-center justify-center bg-[#F2F2F7] px-6 dark:bg-[#0B0F14]">
+        <div className="max-w-md rounded-3xl bg-white p-6 text-center shadow-xl dark:bg-[#161B22]">
           <AlertCircle className="mx-auto mb-3 h-10 w-10 text-amber-500" />
-          <h1 className="text-lg font-bold text-gray-900">환경변수 설정 필요</h1>
-          <p className="mt-2 text-sm leading-relaxed text-gray-500">
-            <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs">.env.local</code>에
+          <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">환경변수 설정 필요</h1>
+          <p className="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+            <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs dark:bg-white/10">.env.local</code>에
             Supabase URL과 Anon Key를 넣은 뒤 개발 서버를 다시 시작해 주세요.
           </p>
         </div>

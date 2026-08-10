@@ -29,8 +29,8 @@ export function NicknameSetup({ onDone }: NicknameSetupProps) {
   };
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center bg-gradient-to-b from-[#FFF5F7] via-[#F2F2F7] to-[#E8F1FF] px-5 py-10">
-      <div className="w-full max-w-sm animate-scale-in rounded-3xl bg-white/90 p-6 shadow-xl shadow-black/5 backdrop-blur">
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-gradient-to-b from-[#FFF5F7] via-[#F2F2F7] to-[#E8F1FF] px-5 py-10 dark:from-[#12161c] dark:via-[#0B0F14] dark:to-[#0f1724]">
+      <div className="w-full max-w-sm animate-scale-in rounded-3xl bg-white/90 p-6 shadow-xl shadow-black/5 backdrop-blur dark:bg-[#161B22]/95 dark:shadow-black/40">
         <div className="mb-5 text-center">
           <Image
             src="/images/couple-sticker.png"
@@ -43,10 +43,10 @@ export function NicknameSetup({ onDone }: NicknameSetupProps) {
           <div className="mx-auto mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-[#007AFF]/10 text-[#007AFF]">
             <UserRound className="h-4 w-4" />
           </div>
-          <h1 className="text-xl font-bold tracking-tight text-gray-900">
+          <h1 className="text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
             이 기기의 별명
           </h1>
-          <p className="mt-1.5 text-sm leading-relaxed text-gray-500">
+          <p className="mt-1.5 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
             누가 수정했는지 알 수 있게
             <br />
             간단한 별명을 남겨 주세요.
@@ -64,11 +64,11 @@ export function NicknameSetup({ onDone }: NicknameSetupProps) {
             placeholder="예: 네모 / 쿵이"
             maxLength={12}
             autoFocus
-            className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3.5 text-center text-base text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#007AFF] focus:bg-white focus:ring-2 focus:ring-[#007AFF]/20"
+            className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3.5 text-center text-base text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#007AFF] focus:bg-white focus:ring-2 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-white/5 dark:text-gray-100 dark:focus:bg-[#0B0F14]"
           />
 
           {error ? (
-            <p className="rounded-xl bg-rose-50 px-3 py-2 text-center text-sm text-rose-600">
+            <p className="rounded-xl bg-rose-50 px-3 py-2 text-center text-sm text-rose-600 dark:bg-rose-500/15 dark:text-rose-300">
               {error}
             </p>
           ) : (
@@ -86,7 +86,7 @@ export function NicknameSetup({ onDone }: NicknameSetupProps) {
                   setName(quick);
                   setError(null);
                 }}
-                className="h-10 flex-1 rounded-xl bg-gray-100 text-sm font-semibold text-gray-700 transition active:scale-95"
+                className="h-10 flex-1 rounded-xl bg-gray-100 text-sm font-semibold text-gray-700 transition active:scale-95 dark:bg-white/10 dark:text-gray-200"
               >
                 {quick}
               </button>

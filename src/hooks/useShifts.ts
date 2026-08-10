@@ -132,6 +132,9 @@ export function useShifts({ calendarId, currentMonth }: UseShiftsOptions) {
       note: string;
       updatedBy: string;
       existingId?: string;
+      startTime?: string | null;
+      endTime?: string | null;
+      extraHours?: number | null;
     }) => {
       if (!calendarId) throw new Error("달력이 없습니다.");
       const saved = await upsertShift({

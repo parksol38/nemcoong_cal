@@ -1,24 +1,37 @@
 -- ============================================================
--- 교대근무 공유 달력 — Supabase 스키마
--- Supabase SQL Editor에서 이 파일 전체를 실행하세요.
+-- ???? ?? ?? ? Supabase ???
+-- Supabase SQL Editor?? ? ?? ??? ?????.
 -- ============================================================
 
--- 공유 달력
+-- ?? ??
 create table if not exists public.calendars (
   id uuid primary key default gen_random_uuid(),
-  name text not null default '우리 교대근무표',
+  name text not null default '?? ?????',
   share_code text not null unique,
   created_at timestamptz not null default now()
 );
 
--- 일자별 근무
+-- ??? ??
 create table if not exists public.shifts (
   id uuid primary key default gen_random_uuid(),
   calendar_id uuid not null references public.calendars(id) on delete cascade,
   date date not null,
-  -- day: 주간, night: 야간, overnight: 심야, rest: 비번, off: 휴무
-  shift_type text not null check (shift_type in ('day', 'night', 'overnight', 'rest', 'off')),
+  -- day: ??, night: ??, overnight: ??, rest: ??, off: ??
+  -- day_support: ????, night_support: ???? (?? ?? ??)
+  shift_type text not null check (
+    shift_type in (
+      'day',
+      'night',
+      'overnight',
+      'rest',
+      'off',
+      'day_support',
+      'night_support'
+    )
+  ),
   note text default '',
+  start_time text, -- HH:mm (?? ???)
+  end_time text,   -- HH:mm (?? ???)
   updated_by text default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -28,7 +41,7 @@ create table if not exists public.shifts (
 create index if not exists shifts_calendar_date_idx
   on public.shifts (calendar_id, date);
 
--- updated_at 자동 갱신
+-- updated_at ?? ??
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -45,7 +58,7 @@ create trigger shifts_set_updated_at
   for each row
   execute function public.set_updated_at();
 
--- RLS: 공유 코드만 알면 접근 가능 (커플용 간편 공유)
+-- RLS: ?? ??? ?? ?? ?? (??? ?? ??)
 alter table public.calendars enable row level security;
 alter table public.shifts enable row level security;
 
@@ -78,7 +91,7 @@ create policy "shifts_update" on public.shifts
 create policy "shifts_delete" on public.shifts
   for delete using (true);
 
--- Realtime 구독 활성화 (이미 추가된 경우 오류가 날 수 있음 — 무시해도 됩니다)
+-- Realtime ?? ??? (?? ??? ?? ??? ? ? ?? ? ???? ???)
 do $$
 begin
   alter publication supabase_realtime add table public.shifts;
@@ -87,5 +100,5 @@ exception
 end $$;
 
 
--- (�߰�) ���� �˸� �α״� migrate-change-logs.sql ����
+-- (???) ???? ??? ???? migrate-change-logs.sql ????
 

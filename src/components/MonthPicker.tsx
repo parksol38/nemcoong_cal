@@ -96,8 +96,8 @@ function WheelColumn({
               }}
               className={`flex w-full snap-center items-center justify-center text-[17px] transition-colors ${
                 active
-                  ? "font-bold text-gray-900"
-                  : "font-medium text-gray-300"
+                  ? "font-bold text-gray-900 dark:text-gray-100"
+                  : "font-medium text-gray-300 dark:text-gray-600"
               }`}
               style={{ height: ITEM_H }}
             >
@@ -144,16 +144,16 @@ export function MonthPicker({ open, value, onClose, onConfirm }: MonthPickerProp
         className="absolute inset-0 bg-black/40 backdrop-blur-[2px] animate-fade-in"
         onClick={onClose}
       />
-      <div className="relative z-10 w-full max-w-md animate-sheet-up rounded-t-3xl bg-white shadow-2xl sm:mx-4 sm:animate-scale-in sm:rounded-3xl">
-        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+      <div className="relative z-10 w-full max-w-md animate-sheet-up rounded-t-3xl bg-white shadow-2xl dark:bg-[#161B22] dark:shadow-black/40 sm:mx-4 sm:animate-scale-in sm:rounded-3xl">
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-white/10">
           <div>
             <p className="text-xs font-medium text-gray-400">이동</p>
-            <h2 className="text-lg font-bold text-gray-900">년 / 월 선택</h2>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">년 / 월 선택</h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-600 transition active:scale-95"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-600 transition active:scale-95 dark:bg-white/10 dark:text-gray-300"
           >
             <X className="h-4 w-4" />
           </button>
@@ -166,8 +166,8 @@ export function MonthPicker({ open, value, onClose, onConfirm }: MonthPickerProp
             style={{ height: ITEM_H }}
           />
           {/* 위·아래 페이드 */}
-          <div className="pointer-events-none absolute inset-x-4 top-2 z-20 h-12 bg-gradient-to-b from-white to-transparent" />
-          <div className="pointer-events-none absolute inset-x-4 bottom-2 z-20 h-12 bg-gradient-to-t from-white to-transparent" />
+          <div className="pointer-events-none absolute inset-x-4 top-2 z-20 h-12 bg-gradient-to-b from-white to-transparent dark:from-[#161B22]" />
+          <div className="pointer-events-none absolute inset-x-4 bottom-2 z-20 h-12 bg-gradient-to-t from-white to-transparent dark:from-[#161B22]" />
 
           <div className="relative z-0 flex gap-2">
             <WheelColumn
@@ -185,7 +185,7 @@ export function MonthPicker({ open, value, onClose, onConfirm }: MonthPickerProp
           </div>
         </div>
 
-        <div className="border-t border-gray-100 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="border-t border-gray-100 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-white/10">
           <button
             type="button"
             onClick={handleConfirm}

@@ -23,7 +23,7 @@ export function SplashScreen({ onDone, durationMs = 1600 }: SplashScreenProps) {
 
   return (
     <div
-      className={`fixed inset-0 z-[100] flex flex-col items-center justify-center bg-gradient-to-b from-[#FFF5F7] via-[#F2F2F7] to-[#E8F1FF] transition-opacity duration-300 ${
+      className={`fixed inset-0 z-[100] flex flex-col items-center justify-center bg-gradient-to-b from-[#FFF5F7] via-[#F2F2F7] to-[#E8F1FF] transition-opacity duration-300 dark:from-[#12161c] dark:via-[#0B0F14] dark:to-[#0f1724] ${
         hiding ? "pointer-events-none opacity-0" : "opacity-100"
       }`}
     >
@@ -37,7 +37,7 @@ export function SplashScreen({ onDone, durationMs = 1600 }: SplashScreenProps) {
           className="h-auto w-[220px] drop-shadow-xl sm:w-[260px]"
         />
       </div>
-      <p className="mt-5 animate-fade-in px-4 text-center text-base font-bold leading-snug tracking-tight text-gray-800">
+      <p className="mt-5 animate-fade-in px-4 text-center text-base font-bold leading-snug tracking-tight text-gray-800 dark:text-gray-100">
         멋진여자 박네모가 만든 넴쿵 교대근무표
       </p>
       <p className="mt-1 text-xs text-gray-400">함께 보는 하루</p>

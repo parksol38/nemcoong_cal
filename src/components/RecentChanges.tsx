@@ -26,7 +26,7 @@ export function RecentChanges({ logs, setupError, onSelect }: RecentChangesProps
           {setupError}
         </p>
       ) : items.length === 0 ? (
-        <p className="rounded-2xl bg-white/70 px-4 py-5 text-center text-xs text-gray-400">
+        <p className="rounded-2xl bg-white/70 px-4 py-5 text-center text-xs text-gray-400 dark:bg-[#161B22]/70">
           아직 변경 이력이 없어요.
         </p>
       ) : (
@@ -41,17 +41,17 @@ export function RecentChanges({ logs, setupError, onSelect }: RecentChangesProps
                 key={log.id}
                 type="button"
                 onClick={() => onSelect?.(log)}
-                className="rounded-2xl bg-white px-3 py-2.5 text-left shadow-sm transition active:scale-[0.98]"
+                className="rounded-2xl bg-white px-3 py-2.5 text-left shadow-sm transition active:scale-[0.98] dark:bg-[#161B22] dark:shadow-black/20"
               >
                 <div className="mb-1 flex items-center justify-between gap-1">
-                  <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-500">
+                  <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-500 dark:bg-rose-500/15 dark:text-rose-300">
                     {dayLabel}
                   </span>
                   <span className="text-[10px] text-gray-400">
                     {timeLabel}
                   </span>
                 </div>
-                <p className="line-clamp-2 text-[11px] leading-snug text-gray-700">
+                <p className="line-clamp-2 text-[11px] leading-snug text-gray-700 dark:text-gray-300">
                   {log.summary}
                 </p>
               </button>

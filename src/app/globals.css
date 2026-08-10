@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* class 기반 다크모드 (.dark on <html>) */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #f2f2f7;
   --foreground: #111827;
@@ -7,6 +10,17 @@
   --shift-day: #ff9500;
   --shift-night: #1b3a5f;
   --shift-overnight: #0f2744;
+  --surface: #ffffff;
+  --surface-muted: #f9fafb;
+  color-scheme: light;
+}
+
+.dark {
+  --background: #0b0f14;
+  --foreground: #f3f4f6;
+  --surface: #161b22;
+  --surface-muted: #1c232d;
+  color-scheme: dark;
 }
 
 @theme inline {

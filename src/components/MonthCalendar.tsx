@@ -12,7 +12,7 @@ import {
   startOfWeek,
   subMonths,
 } from "date-fns";
-import { Wifi } from "lucide-react";
+import { Clock3 } from "lucide-react";
 import {
   buildPatternChangeSummary,
   buildSingleChangeSummary,
@@ -22,14 +22,26 @@ import { useChangeLogs } from "@/hooks/useChangeLogs";
 import { useSharedMessage } from "@/hooks/useSharedMessage";
 import { useShifts } from "@/hooks/useShifts";
 import {
+  formatHoursLabel,
+  getHourlyRates,
+  getRateCategory,
+  getShiftColors,
+  getShiftDisplayHours,
+  getShiftVisual,
+  getShowHoursPreference,
+  getShowPayPreference,
+  SHIFT_CELL_LABELS,
   WEEKDAY_LABELS,
+  type HourlyRates,
   type Shift,
   type ShiftChangeLog,
+  type ShiftColors,
   type ShiftType,
 } from "@/lib/types";
 import { CalendarDay } from "./CalendarDay";
 import { CalendarHeader } from "./CalendarHeader";
 import { ChangeNoticeModal } from "./ChangeNoticeModal";
+import { MonthHoursModal, type HoursBucket } from "./MonthHoursModal";
 import { MonthPicker } from "./MonthPicker";
 import { RecentChanges } from "./RecentChanges";
 import { SettingsModal } from "./SettingsModal";
@@ -60,6 +72,28 @@ export function MonthCalendar({
   const [noticeOpen, setNoticeOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
+  const [hoursModalOpen, setHoursModalOpen] = useState(false);
+  const [showHours, setShowHours] = useState(true);
+  const [showPay, setShowPay] = useState(true);
+  const [hourlyRates, setHourlyRates] = useState<HourlyRates>(() => ({
+    day: 10200,
+    night: 13900,
+    overnight: 15500,
+  }));
+  const [shiftColors, setShiftColors] = useState<ShiftColors>(() => ({
+    day: "#F97316",
+    night: "#1B3A5F",
+    overnight: "#0F2744",
+    rest: "#9CA3AF",
+    off: "#CBD5E1",
+  }));
+
+  useEffect(() => {
+    setShowHours(getShowHoursPreference());
+    setShowPay(getShowPayPreference());
+    setHourlyRates(getHourlyRates());
+    setShiftColors(getShiftColors());
+  }, []);
 
   const trackRef = useRef<HTMLDivElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
@@ -116,6 +150,71 @@ export function MonthCalendar({
     for (const s of shifts) map.set(s.date, s);
     return map;
   }, [shifts]);
+
+  /** 현재 달 근무시간 합계 (비번·휴무 0시간 제외) */
+  const monthHoursSummary = useMemo(() => {
+    const prefix = format(currentMonth, "yyyy-MM");
+    let total = 0;
+    const byType = new Map<ShiftType, number>();
+    const byBucket = { day: 0, night: 0, overnight: 0 };
+
+    for (const s of shifts) {
+      if (!s.date.startsWith(prefix)) continue;
+      const h = getShiftDisplayHours(s);
+      if (h <= 0) continue;
+      total += h;
+      byType.set(s.shift_type, (byType.get(s.shift_type) ?? 0) + h);
+      const cat = getRateCategory(s.shift_type);
+      if (cat) byBucket[cat] += h;
+    }
+
+    total = Math.round(total * 10) / 10;
+    byBucket.day = Math.round(byBucket.day * 10) / 10;
+    byBucket.night = Math.round(byBucket.night * 10) / 10;
+    byBucket.overnight = Math.round(byBucket.overnight * 10) / 10;
+
+    const order: ShiftType[] = [
+      "day",
+      "night",
+      "overnight",
+      "day_support",
+      "night_support",
+    ];
+    const parts = order
+      .filter((t) => (byType.get(t) ?? 0) > 0)
+      .map((t) => {
+        const h = byType.get(t) ?? 0;
+        const rounded = Math.round(h * 10) / 10;
+        return {
+          type: t,
+          label: SHIFT_CELL_LABELS[t],
+          hours: formatHoursLabel(rounded),
+        };
+      });
+
+    const buckets: HoursBucket[] = [
+      {
+        key: "day",
+        label: "주간",
+        hours: byBucket.day,
+        color: shiftColors.day,
+      },
+      {
+        key: "night",
+        label: "야간",
+        hours: byBucket.night,
+        color: shiftColors.night,
+      },
+      {
+        key: "overnight",
+        label: "심야",
+        hours: byBucket.overnight,
+        color: shiftColors.overnight,
+      },
+    ];
+
+    return { total, parts, buckets };
+  }, [shifts, currentMonth, shiftColors]);
 
   const changeCountByDate = useMemo(() => {
     const map = new Map<string, number>();
@@ -182,6 +281,9 @@ export function MonthCalendar({
     shiftType: ShiftType;
     note: string;
     existingId?: string;
+    startTime?: string | null;
+    endTime?: string | null;
+    extraHours?: number | null;
   }) => {
     if (!selectedDate) return;
     setSaving(true);
@@ -194,6 +296,9 @@ export function MonthCalendar({
         note: data.note,
         updatedBy: displayName,
         existingId: data.existingId,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        extraHours: data.extraHours,
       });
       await recordSingleChange({
         date: dateKey,
@@ -396,7 +501,7 @@ export function MonthCalendar({
   }, [commitSlide, setStripX]);
 
   return (
-    <div className="min-h-dvh bg-[#F2F2F7]">
+    <div className="min-h-dvh bg-[#F2F2F7] dark:bg-[#0B0F14]">
       <CalendarHeader
         currentMonth={currentMonth}
         calendarName={calendarName}
@@ -406,10 +511,56 @@ export function MonthCalendar({
       />
 
       <main className="mx-auto max-w-3xl px-3 pb-28 pt-3 sm:px-4">
-        <div className="mb-3 flex items-center gap-2 rounded-2xl bg-white/80 px-3 py-2.5 shadow-sm">
-          <Wifi className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
-          <p className="text-xs text-gray-500">실시간으로 함께 보는 중</p>
-        </div>
+        <button
+          type="button"
+          onClick={() => setHoursModalOpen(true)}
+          className="mb-3 w-full rounded-2xl bg-white/80 px-3.5 py-3 text-left shadow-sm transition active:scale-[0.99] dark:bg-[#161B22]/90 dark:shadow-black/20"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#007AFF]/10 text-[#007AFF]">
+              <Clock3 className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 shrink-0">
+              <p className="text-[11px] font-medium text-gray-400">
+                {format(currentMonth, "M월")} 총 근무시간
+              </p>
+              <p className="text-lg font-bold tabular-nums leading-tight text-gray-900 dark:text-gray-100">
+                {formatHoursLabel(monthHoursSummary.total) || "0"}
+                <span className="ml-0.5 text-sm font-semibold text-gray-500">
+                  시간
+                </span>
+              </p>
+            </div>
+
+            <div className="ml-auto min-w-0 flex-1">
+              {monthHoursSummary.parts.length > 0 ? (
+                <div className="flex flex-wrap items-center justify-end gap-x-2.5 gap-y-1">
+                  {monthHoursSummary.parts.map((part) => {
+                    const visual = getShiftVisual(part.type, shiftColors);
+                    return (
+                      <span
+                        key={part.type}
+                        className="text-[11px] font-semibold tabular-nums leading-none sm:text-xs"
+                        style={{ color: visual.text }}
+                      >
+                        {part.label} {part.hours}
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-right text-[11px] text-gray-400">
+                  등록된 근무시간이 없어요
+                </p>
+              )}
+            </div>
+          </div>
+          <p className="mt-2 text-right text-[10px] text-gray-400">
+            {showPay
+              ? "탭해서 그래프 · 예상 월급 보기"
+              : "탭해서 근무시간 그래프 보기"}
+          </p>
+        </button>
 
         <div className="mb-2 grid grid-cols-7 gap-1 px-0.5">
           {WEEKDAY_LABELS.map((label, i) => (
@@ -445,6 +596,8 @@ export function MonthCalendar({
               month={prevMonth}
               shiftMap={shiftMap}
               changeCountByDate={changeCountByDate}
+              showHours={showHours}
+              shiftColors={shiftColors}
               onClick={openDay}
               onChangeBadgeClick={openChangeNotice}
             />
@@ -454,6 +607,8 @@ export function MonthCalendar({
               month={currentMonth}
               shiftMap={shiftMap}
               changeCountByDate={changeCountByDate}
+              showHours={showHours}
+              shiftColors={shiftColors}
               onClick={openDay}
               onChangeBadgeClick={openChangeNotice}
             />
@@ -463,6 +618,8 @@ export function MonthCalendar({
               month={nextMonth}
               shiftMap={shiftMap}
               changeCountByDate={changeCountByDate}
+              showHours={showHours}
+              shiftColors={shiftColors}
               onClick={openDay}
               onChangeBadgeClick={openChangeNotice}
             />
@@ -479,12 +636,11 @@ export function MonthCalendar({
         ) : null}
 
         <div className="mt-4 flex flex-wrap justify-center gap-3 text-[11px] text-gray-400">
-          <LegendDot className="bg-orange-500" label="주" />
-          <LegendDot className="bg-[#1B3A5F]" label="야" />
-          <LegendDot className="bg-[#0F2744]" label="심" />
-          <LegendDot className="border border-gray-300 bg-white" label="비" />
-          <LegendDot className="border border-gray-300 bg-white" label="휴" />
-          <LegendDot className="bg-rose-500" label="변경" />
+          <LegendDot color={shiftColors.day} label="주" />
+          <LegendDot color={shiftColors.night} label="야" />
+          <LegendDot color={shiftColors.overnight} label="심" />
+          <LegendDot color={shiftColors.rest} label="비" />
+          <LegendDot color={shiftColors.off} label="휴" />
         </div>
 
         <SharedMessageBoard
@@ -513,8 +669,8 @@ export function MonthCalendar({
         open={modalOpen}
         date={selectedDate}
         shift={selectedShift}
-        displayName={displayName}
         saving={saving}
+        shiftColors={shiftColors}
         onClose={() => setModalOpen(false)}
         onSave={handleSave}
         onSavePattern={handleSavePattern}
@@ -531,7 +687,25 @@ export function MonthCalendar({
       <SettingsModal
         open={settingsOpen}
         calendarId={calendarId}
+        showHours={showHours}
+        onShowHoursChange={setShowHours}
+        showPay={showPay}
+        onShowPayChange={setShowPay}
+        hourlyRates={hourlyRates}
+        onHourlyRatesChange={setHourlyRates}
+        shiftColors={shiftColors}
+        onShiftColorsChange={setShiftColors}
         onClose={() => setSettingsOpen(false)}
+      />
+
+      <MonthHoursModal
+        open={hoursModalOpen}
+        month={currentMonth}
+        totalHours={monthHoursSummary.total}
+        buckets={monthHoursSummary.buckets}
+        rates={hourlyRates}
+        showPay={showPay}
+        onClose={() => setHoursModalOpen(false)}
       />
 
       <MonthPicker
@@ -549,6 +723,8 @@ const MonthGrid = function MonthGrid({
   month,
   shiftMap,
   changeCountByDate,
+  showHours,
+  shiftColors,
   onClick,
   onChangeBadgeClick,
 }: {
@@ -556,6 +732,8 @@ const MonthGrid = function MonthGrid({
   month: Date;
   shiftMap: Map<string, Shift>;
   changeCountByDate: Map<string, number>;
+  showHours: boolean;
+  shiftColors: ShiftColors;
   onClick: (date: Date) => void;
   onChangeBadgeClick: (date: Date) => void;
 }) {
@@ -572,6 +750,8 @@ const MonthGrid = function MonthGrid({
             currentMonth={month}
             shift={shiftMap.get(key)}
             changeCount={changeCountByDate.get(key) ?? 0}
+            showHours={showHours}
+            shiftColors={shiftColors}
             onClick={onClick}
             onChangeBadgeClick={onChangeBadgeClick}
           />
@@ -581,10 +761,13 @@ const MonthGrid = function MonthGrid({
   );
 };
 
-function LegendDot({ className, label }: { className: string; label: string }) {
+function LegendDot({ color, label }: { color: string; label: string }) {
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span className={`h-2.5 w-2.5 rounded-full ${className}`} />
+      <span
+        className="h-2.5 w-2.5 rounded-full border border-black/5 dark:border-white/10"
+        style={{ backgroundColor: color }}
+      />
       {label}
     </span>
   );

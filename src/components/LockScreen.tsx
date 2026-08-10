@@ -44,9 +44,9 @@ export function LockScreen({
   };
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center bg-gradient-to-b from-[#FFF5F7] via-[#F2F2F7] to-[#E8F1FF] px-5 py-10">
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-gradient-to-b from-[#FFF5F7] via-[#F2F2F7] to-[#E8F1FF] px-5 py-10 dark:from-[#12161c] dark:via-[#0B0F14] dark:to-[#0f1724]">
       <div
-        className={`w-full max-w-sm rounded-3xl bg-white/90 p-6 shadow-xl shadow-black/5 backdrop-blur ${
+        className={`w-full max-w-sm rounded-3xl bg-white/90 p-6 shadow-xl shadow-black/5 backdrop-blur dark:bg-[#161B22]/95 dark:shadow-black/40 ${
           shaking ? "animate-shake" : "animate-scale-in"
         }`}
       >
@@ -62,10 +62,10 @@ export function LockScreen({
           <div className="mx-auto mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-[#007AFF]/10 text-[#007AFF]">
             <Lock className="h-4 w-4" />
           </div>
-          <h1 className="text-center text-xl font-bold leading-snug tracking-tight text-gray-900">
+          <h1 className="text-center text-xl font-bold leading-snug tracking-tight text-gray-900 dark:text-gray-100">
             멋진여자 박네모가 만든 넴쿵 교대근무표
           </h1>
-          <p className="mt-1.5 text-sm text-gray-500">
+          <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
             둘만 볼 수 있게 비밀번호를 입력해 주세요.
           </p>
         </div>
@@ -83,12 +83,12 @@ export function LockScreen({
             placeholder="비밀번호"
             maxLength={12}
             disabled={loadingLock}
-            className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3.5 text-center text-lg tracking-[0.35em] text-gray-900 outline-none transition placeholder:tracking-normal placeholder:text-gray-400 focus:border-[#007AFF] focus:bg-white focus:ring-2 focus:ring-[#007AFF]/20 disabled:opacity-60"
+            className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3.5 text-center text-lg tracking-[0.35em] text-gray-900 outline-none transition placeholder:tracking-normal placeholder:text-gray-400 focus:border-[#007AFF] focus:bg-white focus:ring-2 focus:ring-[#007AFF]/20 disabled:opacity-60 dark:border-white/10 dark:bg-white/5 dark:text-gray-100 dark:focus:bg-[#0B0F14]"
             autoFocus
           />
 
           {error ? (
-            <p className="rounded-xl bg-rose-50 px-3 py-2 text-center text-sm text-rose-600">
+            <p className="rounded-xl bg-rose-50 px-3 py-2 text-center text-sm text-rose-600 dark:bg-rose-500/15 dark:text-rose-300">
               {error}
             </p>
           ) : (
