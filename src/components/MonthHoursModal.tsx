@@ -347,8 +347,14 @@ export function MonthHoursModal({
                     </div>
                   </div>
                   <p className="mt-2 text-[10px] leading-relaxed text-emerald-800/70 dark:text-emerald-400/70">
-                    시간외=추가시간 합, 야간=야간·심야 근무시간, 휴일=공휴일
-                    근무일수. 경정~순경(소방령~소방사) 단가만 지원합니다.
+                    · 시간외: 추가 근무 시간 × 시간당 단가
+                    <br />
+                    · 야간: 22:00~06:00에 겹친 시간만 × 시간당 단가 (예:
+                    18~08 근무 → 8시간)
+                    <br />
+                    · 휴일: 공휴일 근무 1일당 일당 단가 (시간 무관)
+                    <br />
+                    경정~순경(소방령~소방사) 단가. 공무원수당 규정 기준.
                   </p>
                 </div>
               ) : salaryProfile ? (
