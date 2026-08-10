@@ -6,6 +6,7 @@ import { ko } from "date-fns/locale";
 import { X } from "lucide-react";
 import {
   calcAllowancePay,
+  calcMonthlyTakeHome,
   getAllowanceRates,
   type AllowanceInput,
 } from "@/lib/allowanceRates";
@@ -138,18 +139,17 @@ export function MonthHoursModal({
   const [nightDraft, setNightDraft] = useState("0");
   const [holidayDraft, setHolidayDraft] = useState("0");
 
-  // 모달 열릴 때·집계값이 바뀔 때 근무표 기준으로 채움
+  const shiftOt = allowanceFromShifts?.overtimeHours ?? 0;
+  const shiftNight = allowanceFromShifts?.nightHours ?? 0;
+  const shiftHoliday = allowanceFromShifts?.holidayDays ?? 0;
+
+  // 모달 열릴 때·근무 집계가 바뀔 때 근무표 기준으로 채움
   useEffect(() => {
     if (!open) return;
-    const src = allowanceFromShifts ?? {
-      overtimeHours: 0,
-      nightHours: 0,
-      holidayDays: 0,
-    };
-    setOtDraft(String(src.overtimeHours));
-    setNightDraft(String(src.nightHours));
-    setHolidayDraft(String(src.holidayDays));
-  }, [open, allowanceFromShifts]);
+    setOtDraft(String(shiftOt));
+    setNightDraft(String(shiftNight));
+    setHolidayDraft(String(shiftHoliday));
+  }, [open, shiftOt, shiftNight, shiftHoliday]);
 
   const allowanceInput: AllowanceInput = useMemo(
     () => ({
@@ -165,15 +165,15 @@ export function MonthHoursModal({
     return calcAllowancePay(unitRates, allowanceInput);
   }, [unitRates, allowanceInput]);
 
+  const monthlyTakeHome = useMemo(
+    () => calcMonthlyTakeHome(tableBase, allowancePay),
+    [tableBase, allowancePay],
+  );
+
   const resetAllowanceFromShifts = () => {
-    const src = allowanceFromShifts ?? {
-      overtimeHours: 0,
-      nightHours: 0,
-      holidayDays: 0,
-    };
-    setOtDraft(String(src.overtimeHours));
-    setNightDraft(String(src.nightHours));
-    setHolidayDraft(String(src.holidayDays));
+    setOtDraft(String(shiftOt));
+    setNightDraft(String(shiftNight));
+    setHolidayDraft(String(shiftHoliday));
   };
 
   if (!open) return null;
@@ -238,17 +238,34 @@ export function MonthHoursModal({
 
           {showPay ? (
             <div className="space-y-2">
-              {tableBase != null && profileLabel ? (
-                <div className="rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3.5 dark:border-white/10 dark:bg-white/5">
-                  <p className="text-[11px] font-medium text-gray-400">
-                    봉급표 기본급 · {profileLabel}
-                  </p>
-                  <p className="mt-1 text-xl font-bold tabular-nums tracking-tight text-gray-900 dark:text-gray-100">
-                    {formatWon(tableBase)}
-                  </p>
-                  <p className="mt-1 text-[10px] leading-relaxed text-gray-400">
-                    공무원보수규정(2026) 월 봉급. 수당·공제 전 금액이에요.
-                  </p>
+              <div className="rounded-2xl bg-[#007AFF]/10 px-4 py-4 dark:bg-[#007AFF]/15">
+                <p className="text-[11px] font-medium text-[#007AFF]/80">
+                  이번 달 예상 수령액
+                  {profileLabel ? ` · ${profileLabel}` : ""}
+                </p>
+                <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-[#007AFF]">
+                  {formatWon(monthlyTakeHome)}
+                </p>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+                  봉급표 기본급
+                  {tableBase != null ? ` ${formatWon(tableBase)}` : ""}
+                  {allowancePay
+                    ? ` + 수당 ${formatWon(allowancePay.total)}`
+                    : ""}
+                  . 공제·기타수당 전 참고용이에요.
+                </p>
+              </div>
+
+              {tableBase != null ? (
+                <div className="rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-medium text-gray-400">
+                      봉급표 기본급
+                    </p>
+                    <p className="text-sm font-bold tabular-nums text-gray-900 dark:text-gray-100">
+                      {formatWon(tableBase)}
+                    </p>
+                  </div>
                 </div>
               ) : null}
 
@@ -260,7 +277,7 @@ export function MonthHoursModal({
                         시간외·야간·휴일 수당 (2026 단가)
                       </p>
                       <p className="mt-0.5 text-[10px] text-emerald-700/80 dark:text-emerald-400/80">
-                        녹색 칸은 수정 가능 · 기본값은 이번 달 근무 입력 기준
+                        근무표 자동 집계 · 녹색 칸에서 수정 가능
                       </p>
                     </div>
                     <button
@@ -270,6 +287,12 @@ export function MonthHoursModal({
                     >
                       근무표로 다시 채우기
                     </button>
+                  </div>
+
+                  <div className="mb-2 rounded-xl bg-white/70 px-2.5 py-2 text-[10px] leading-relaxed text-emerald-900/80 dark:bg-black/20 dark:text-emerald-200/80">
+                    이번 달 집계: 시간외 {formatHoursLabel(shiftOt) || "0"}시간 ·
+                    야간(22~06) {formatHoursLabel(shiftNight) || "0"}시간 · 휴일{" "}
+                    {shiftHoliday}일
                   </div>
 
                   <div className="grid grid-cols-3 gap-1.5">
@@ -347,36 +370,35 @@ export function MonthHoursModal({
                     </div>
                   </div>
                   <p className="mt-2 text-[10px] leading-relaxed text-emerald-800/70 dark:text-emerald-400/70">
-                    · 시간외: 추가 근무 시간 × 시간당 단가
+                    · 시간외: 추가시간 합 × 단가
                     <br />
-                    · 야간: 22:00~06:00에 겹친 시간만 × 시간당 단가 (예:
-                    18~08 근무 → 8시간)
+                    · 야간: 22:00~06:00 겹침 시간 × 단가 (야간 1회≈8시간)
                     <br />
-                    · 휴일: 공휴일 근무 1일당 일당 단가 (시간 무관)
-                    <br />
-                    경정~순경(소방령~소방사) 단가. 공무원수당 규정 기준.
+                    · 휴일: 공휴일·일요일 근무 1일 × 일당
                   </p>
                 </div>
               ) : salaryProfile ? (
                 <div className="rounded-2xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 text-[11px] leading-relaxed text-amber-900/80 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200/80">
                   현재 계급({profileLabel})은 2026 시간외 단가표(경정~순경)에
-                  없어요. 설정에서 해당 계급으로 바꾸면 수당 계산을 볼 수
-                  있어요.
+                  없어요. 설정 → 내 계급·호봉에서 경정~순경(또는 소방
+                  대응계급)으로 바꿔 주세요.
                 </div>
-              ) : null}
+              ) : (
+                <div className="rounded-2xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 text-[11px] leading-relaxed text-amber-900/80 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200/80">
+                  설정 → 내 계급·호봉을 먼저 지정하면 기본급·수당이 계산돼요.
+                </div>
+              )}
 
-              <div className="rounded-2xl bg-[#007AFF]/10 px-4 py-4 dark:bg-[#007AFF]/15">
-                <p className="text-[11px] font-medium text-[#007AFF]/80">
-                  이번 달 근무 추정액
-                </p>
-                <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-[#007AFF]">
-                  {formatWon(pay.estimated)}
-                </p>
-                <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+              <details className="rounded-2xl border border-gray-100 bg-gray-50/50 px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                <summary className="cursor-pointer text-[11px] font-semibold text-gray-500">
+                  참고 · 통상시급 × 근무시간 ({formatWon(pay.estimated)})
+                </summary>
+                <p className="mt-2 text-[10px] leading-relaxed text-gray-400">
                   총 {formatHoursLabel(totalHours) || "0"}시간 × 설정 시급
-                  기준이에요. 위 수당과는 별도 추정치입니다.
+                  환산값이에요. 위 &quot;예상 수령액&quot;(기본급+수당)과는 다른
+                  참고용 지표입니다.
                 </p>
-              </div>
+              </details>
             </div>
           ) : null}
         </div>

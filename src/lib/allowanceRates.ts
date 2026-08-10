@@ -1,4 +1,3 @@
-import { parseISO } from "date-fns";
 import type { SalaryRankId } from "./salaryTable";
 import {
   SHIFT_DEFAULT_TIMES,
@@ -6,7 +5,7 @@ import {
   type Shift,
   type ShiftType,
 } from "./types";
-import { isPublicHoliday } from "./holidays";
+import { isHolidayWorkDate } from "./holidays";
 
 /**
  * 2026 시간외·야간·휴일 수당 지급 단가
@@ -45,14 +44,13 @@ export function getAllowanceRates(
  */
 export const NIGHT_ALLOWANCE_START_MIN = 22 * 60;
 export const NIGHT_ALLOWANCE_END_MIN = 6 * 60;
-export const NIGHT_ALLOWANCE_WINDOW_HOURS = 8;
 
 export type AllowanceInput = {
   /** 시간외근무 (시간) — 추가로 일한 시간(extra_hours) */
   overtimeHours: number;
   /** 야간근무 (시간) — 22~06 구간에 실제 겹친 시간 */
   nightHours: number;
-  /** 휴일근무 (일수) — 공휴일에 근무한 날 수 */
+  /** 휴일근무 (일수) — 공휴일·일요일에 근무한 날 수 */
   holidayDays: number;
 };
 
@@ -64,14 +62,29 @@ const WORK_TYPES = new Set<ShiftType>([
   "night_support",
 ]);
 
-function parseHHMMToMinutes(value: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+const NIGHT_SHIFT_TYPES = new Set<ShiftType>([
+  "night",
+  "overnight",
+  "night_support",
+]);
+
+/** "18:00" / "18:00:00" / "8:00" 등 → HH:mm */
+function normalizeHHMM(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const m = /(\d{1,2}):(\d{2})/.exec(String(raw).trim());
   if (!m) return null;
   const h = Number(m[1]);
   const min = Number(m[2]);
   if (!Number.isFinite(h) || !Number.isFinite(min)) return null;
   if (h < 0 || h > 23 || min < 0 || min > 59) return null;
-  return h * 60 + min;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+function parseHHMMToMinutes(value: string): number | null {
+  const n = normalizeHHMM(value);
+  if (!n) return null;
+  const [h, m] = n.split(":").map(Number);
+  return h! * 60 + m!;
 }
 
 /**
@@ -90,7 +103,6 @@ export function calcNightAllowanceHours(
   if (end <= start) end += 24 * 60;
 
   let overlapMins = 0;
-  // 근무가 걸칠 수 있는 야간 창(전날·당일·다음날)
   for (let day = -1; day <= 2; day++) {
     const nStart = day * 24 * 60 + NIGHT_ALLOWANCE_START_MIN;
     const nEnd = day * 24 * 60 + 24 * 60 + NIGHT_ALLOWANCE_END_MIN;
@@ -103,13 +115,27 @@ export function calcNightAllowanceHours(
 }
 
 function resolveShiftTimes(shift: Shift): { start: string; end: string } | null {
-  if (shift.start_time && shift.end_time) {
-    return {
-      start: shift.start_time.slice(0, 5),
-      end: shift.end_time.slice(0, 5),
-    };
+  const customStart = normalizeHHMM(shift.start_time);
+  const customEnd = normalizeHHMM(shift.end_time);
+  if (customStart && customEnd) {
+    return { start: customStart, end: customEnd };
   }
-  return SHIFT_DEFAULT_TIMES[shift.shift_type];
+  const defaults = SHIFT_DEFAULT_TIMES[shift.shift_type];
+  if (!defaults) return null;
+  return { start: defaults.start, end: defaults.end };
+}
+
+/** 한 근무에서 야간수당 대상 시간 */
+export function nightHoursForShift(shift: Shift): number {
+  const times = resolveShiftTimes(shift);
+  if (times) {
+    const hours = calcNightAllowanceHours(times.start, times.end);
+    if (hours > 0) return hours;
+  }
+  // 시간 파싱 실패 시 야간·심야·야간자원은 기본 야간창으로 보수적 추정
+  if (shift.shift_type === "overnight") return 6;
+  if (NIGHT_SHIFT_TYPES.has(shift.shift_type)) return 8;
+  return 0;
 }
 
 /** 달력에 입력된 근무로 시간외·야간·휴일 수량 집계 */
@@ -128,19 +154,12 @@ export function summarizeAllowanceInput(
     // 시간외: 사용자가 입력한 추가 근무 시간
     overtimeHours += getShiftExtraHours(s);
 
-    // 야간: 22~06에 겹친 시간만 (정책)
-    const times = resolveShiftTimes(s);
-    if (times) {
-      nightHours += calcNightAllowanceHours(times.start, times.end);
-    }
+    // 야간: 22~06 겹침 시간 (야간·심야 등)
+    nightHours += nightHoursForShift(s);
 
-    // 휴일: 공휴일에 근무하면 1일분 (시간 무관)
-    try {
-      if (isPublicHoliday(parseISO(s.date))) {
-        holidayDays += 1;
-      }
-    } catch {
-      // 날짜 파싱 실패 시 무시
+    // 휴일: 공휴일·일요일에 근무하면 1일분
+    if (isHolidayWorkDate(s.date)) {
+      holidayDays += 1;
     }
   }
 
@@ -162,13 +181,25 @@ export function calcAllowancePay(
   rates: AllowanceUnitRates,
   input: AllowanceInput,
 ): AllowanceBreakdown {
-  const overtimePay = Math.round(rates.overtime * input.overtimeHours);
-  const nightPay = Math.round(rates.night * input.nightHours);
-  const holidayPay = Math.round(rates.holiday * input.holidayDays);
+  const overtimePay = Math.round(rates.overtime * Math.max(0, input.overtimeHours));
+  const nightPay = Math.round(rates.night * Math.max(0, input.nightHours));
+  const holidayPay = Math.round(
+    rates.holiday * Math.max(0, Math.round(input.holidayDays)),
+  );
   return {
     overtimePay,
     nightPay,
     holidayPay,
     total: overtimePay + nightPay + holidayPay,
   };
+}
+
+/** 월 예상 수령 = 봉급표 기본급 + 수당 합계 */
+export function calcMonthlyTakeHome(
+  baseSalary: number | null,
+  allowance: AllowanceBreakdown | null,
+): number {
+  const base = baseSalary != null && Number.isFinite(baseSalary) ? baseSalary : 0;
+  const add = allowance?.total ?? 0;
+  return Math.round(base + add);
 }

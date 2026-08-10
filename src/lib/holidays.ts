@@ -85,3 +85,22 @@ export function getHolidayName(date: Date): string | null {
 export function isPublicHoliday(date: Date): boolean {
   return getHolidayName(date) != null;
 }
+
+/** YYYY-MM-DD 문자열이 공휴일인지 (타임존 이슈 없이) */
+export function isPublicHolidayKey(dateKey: string): boolean {
+  return HOLIDAY_MAP[dateKey] != null;
+}
+
+/**
+ * 휴일근무수당 대상일: 공휴일 또는 일요일에 근무한 경우
+ * (날짜 문자열 YYYY-MM-DD 기준, 로컬 요일)
+ */
+export function isHolidayWorkDate(dateKey: string): boolean {
+  if (isPublicHolidayKey(dateKey)) return true;
+  const parts = dateKey.split("-").map(Number);
+  if (parts.length !== 3) return false;
+  const [y, m, d] = parts;
+  if (!y || !m || !d) return false;
+  const dt = new Date(y, m - 1, d);
+  return dt.getDay() === 0; // 일요일
+}
