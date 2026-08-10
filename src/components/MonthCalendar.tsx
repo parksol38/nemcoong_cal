@@ -42,6 +42,7 @@ import {
   type ShiftType,
 } from "@/lib/types";
 import { legendShiftTypes } from "@/lib/pattern";
+import { summarizeAllowanceInput } from "@/lib/allowanceRates";
 import { CalendarDay } from "./CalendarDay";
 import { CalendarHeader } from "./CalendarHeader";
 import { ChangeNoticeModal } from "./ChangeNoticeModal";
@@ -244,6 +245,14 @@ export function MonthCalendar({
 
     return { total, parts, buckets };
   }, [shifts, currentMonth, shiftColors]);
+
+  /** 시간외·야간·휴일 수당 집계용 (달력 입력 기준) */
+  const allowanceFromShifts = useMemo(() => {
+    return summarizeAllowanceInput(
+      shifts,
+      format(currentMonth, "yyyy-MM"),
+    );
+  }, [shifts, currentMonth]);
 
   const changeCountByDate = useMemo(() => {
     const map = new Map<string, number>();
@@ -748,6 +757,7 @@ export function MonthCalendar({
         rates={hourlyRates}
         showPay={showPay}
         salaryProfile={salaryProfile ?? undefined}
+        allowanceFromShifts={allowanceFromShifts}
         onClose={() => setHoursModalOpen(false)}
       />
 

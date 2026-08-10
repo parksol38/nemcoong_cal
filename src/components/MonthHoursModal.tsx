@@ -1,9 +1,14 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { X } from "lucide-react";
+import {
+  calcAllowancePay,
+  getAllowanceRates,
+  type AllowanceInput,
+} from "@/lib/allowanceRates";
 import {
   formatHoursLabel,
   formatSalaryProfileLabel,
@@ -29,6 +34,8 @@ interface MonthHoursModalProps {
   /** 예상 월급·시급 금액 표시 */
   showPay?: boolean;
   salaryProfile?: SalaryProfile;
+  /** 달력 근무에서 집계한 시간외·야간·휴일 */
+  allowanceFromShifts?: AllowanceInput;
   onClose: () => void;
 }
 
@@ -91,6 +98,12 @@ function DonutChart({ buckets }: { buckets: HoursBucket[] }) {
   );
 }
 
+function parseNum(raw: string): number {
+  const n = Number(raw.replace(/[^\d.]/g, ""));
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.round(n * 10) / 10;
+}
+
 export function MonthHoursModal({
   open,
   month,
@@ -99,6 +112,7 @@ export function MonthHoursModal({
   rates,
   showPay = true,
   salaryProfile,
+  allowanceFromShifts,
   onClose,
 }: MonthHoursModalProps) {
   const pay = useMemo(() => {
@@ -116,6 +130,51 @@ export function MonthHoursModal({
       : null;
   const profileLabel =
     salaryProfile != null ? formatSalaryProfileLabel(salaryProfile) : null;
+
+  const unitRates =
+    salaryProfile != null ? getAllowanceRates(salaryProfile.rankId) : null;
+
+  const [otDraft, setOtDraft] = useState("0");
+  const [nightDraft, setNightDraft] = useState("0");
+  const [holidayDraft, setHolidayDraft] = useState("0");
+
+  // 모달 열릴 때·집계값이 바뀔 때 근무표 기준으로 채움
+  useEffect(() => {
+    if (!open) return;
+    const src = allowanceFromShifts ?? {
+      overtimeHours: 0,
+      nightHours: 0,
+      holidayDays: 0,
+    };
+    setOtDraft(String(src.overtimeHours));
+    setNightDraft(String(src.nightHours));
+    setHolidayDraft(String(src.holidayDays));
+  }, [open, allowanceFromShifts]);
+
+  const allowanceInput: AllowanceInput = useMemo(
+    () => ({
+      overtimeHours: parseNum(otDraft),
+      nightHours: parseNum(nightDraft),
+      holidayDays: Math.round(parseNum(holidayDraft)),
+    }),
+    [otDraft, nightDraft, holidayDraft],
+  );
+
+  const allowancePay = useMemo(() => {
+    if (!unitRates) return null;
+    return calcAllowancePay(unitRates, allowanceInput);
+  }, [unitRates, allowanceInput]);
+
+  const resetAllowanceFromShifts = () => {
+    const src = allowanceFromShifts ?? {
+      overtimeHours: 0,
+      nightHours: 0,
+      holidayDays: 0,
+    };
+    setOtDraft(String(src.overtimeHours));
+    setNightDraft(String(src.nightHours));
+    setHolidayDraft(String(src.holidayDays));
+  };
 
   if (!open) return null;
 
@@ -192,6 +251,114 @@ export function MonthHoursModal({
                   </p>
                 </div>
               ) : null}
+
+              {unitRates && allowancePay ? (
+                <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/70 px-4 py-3.5 dark:border-emerald-500/30 dark:bg-emerald-500/10">
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300">
+                        시간외·야간·휴일 수당 (2026 단가)
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-emerald-700/80 dark:text-emerald-400/80">
+                        녹색 칸은 수정 가능 · 기본값은 이번 달 근무 입력 기준
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={resetAllowanceFromShifts}
+                      className="shrink-0 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300"
+                    >
+                      근무표로 다시 채우기
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <label className="block min-w-0">
+                      <span className="mb-0.5 block text-center text-[10px] font-semibold text-emerald-800/80 dark:text-emerald-300/80">
+                        시간외(시간)
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={otDraft}
+                        onChange={(e) => setOtDraft(e.target.value)}
+                        className="w-full rounded-lg border border-emerald-300 bg-[#DCFCE7] px-1.5 py-1.5 text-center text-[12px] tabular-nums text-gray-900 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-400/40 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-gray-100"
+                      />
+                      <p className="mt-0.5 text-center text-[9px] text-emerald-700/70 dark:text-emerald-400/70">
+                        × {formatWon(unitRates.overtime)}
+                      </p>
+                    </label>
+                    <label className="block min-w-0">
+                      <span className="mb-0.5 block text-center text-[10px] font-semibold text-emerald-800/80 dark:text-emerald-300/80">
+                        야간(시간)
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={nightDraft}
+                        onChange={(e) => setNightDraft(e.target.value)}
+                        className="w-full rounded-lg border border-emerald-300 bg-[#DCFCE7] px-1.5 py-1.5 text-center text-[12px] tabular-nums text-gray-900 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-400/40 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-gray-100"
+                      />
+                      <p className="mt-0.5 text-center text-[9px] text-emerald-700/70 dark:text-emerald-400/70">
+                        × {formatWon(unitRates.night)}
+                      </p>
+                    </label>
+                    <label className="block min-w-0">
+                      <span className="mb-0.5 block text-center text-[10px] font-semibold text-emerald-800/80 dark:text-emerald-300/80">
+                        휴일(일수)
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={holidayDraft}
+                        onChange={(e) => setHolidayDraft(e.target.value)}
+                        className="w-full rounded-lg border border-emerald-300 bg-[#DCFCE7] px-1.5 py-1.5 text-center text-[12px] tabular-nums text-gray-900 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-400/40 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-gray-100"
+                      />
+                      <p className="mt-0.5 text-center text-[9px] text-emerald-700/70 dark:text-emerald-400/70">
+                        × {formatWon(unitRates.holiday)}
+                      </p>
+                    </label>
+                  </div>
+
+                  <div className="mt-2.5 space-y-1 border-t border-emerald-200/70 pt-2 dark:border-emerald-500/20">
+                    <div className="flex justify-between text-[11px] text-emerald-900/80 dark:text-emerald-200/80">
+                      <span>시간외수당</span>
+                      <span className="tabular-nums font-semibold">
+                        {formatWon(allowancePay.overtimePay)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[11px] text-emerald-900/80 dark:text-emerald-200/80">
+                      <span>야간수당</span>
+                      <span className="tabular-nums font-semibold">
+                        {formatWon(allowancePay.nightPay)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[11px] text-emerald-900/80 dark:text-emerald-200/80">
+                      <span>휴일수당</span>
+                      <span className="tabular-nums font-semibold">
+                        {formatWon(allowancePay.holidayPay)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between pt-1 text-sm font-bold text-emerald-900 dark:text-emerald-200">
+                      <span>수당 합계</span>
+                      <span className="tabular-nums">
+                        {formatWon(allowancePay.total)}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-[10px] leading-relaxed text-emerald-800/70 dark:text-emerald-400/70">
+                    시간외=추가시간 합, 야간=야간·심야 근무시간, 휴일=공휴일
+                    근무일수. 경정~순경(소방령~소방사) 단가만 지원합니다.
+                  </p>
+                </div>
+              ) : salaryProfile ? (
+                <div className="rounded-2xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 text-[11px] leading-relaxed text-amber-900/80 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200/80">
+                  현재 계급({profileLabel})은 2026 시간외 단가표(경정~순경)에
+                  없어요. 설정에서 해당 계급으로 바꾸면 수당 계산을 볼 수
+                  있어요.
+                </div>
+              ) : null}
+
               <div className="rounded-2xl bg-[#007AFF]/10 px-4 py-4 dark:bg-[#007AFF]/15">
                 <p className="text-[11px] font-medium text-[#007AFF]/80">
                   이번 달 근무 추정액
@@ -201,8 +368,7 @@ export function MonthHoursModal({
                 </p>
                 <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
                   총 {formatHoursLabel(totalHours) || "0"}시간 × 설정 시급
-                  기준이에요. 시급은 계급·호봉 봉급표에서 산출되며, 설정에서
-                  바꿀 수 있어요.
+                  기준이에요. 위 수당과는 별도 추정치입니다.
                 </p>
               </div>
             </div>
