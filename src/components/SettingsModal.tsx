@@ -5,23 +5,45 @@ import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import {
   Clock3,
+  Copy,
+  Eye,
+  EyeOff,
   History,
+  IdCard,
+  KeyRound,
   MessageCircleHeart,
   MonitorSmartphone,
   Moon,
   Settings2,
   Smartphone,
   Sun,
+  UserMinus,
   Users,
   Wallet,
   X,
 } from "lucide-react";
-import { fetchCalendarDevices, fetchMessageHistory } from "@/lib/api";
-import { useTheme } from "@/components/ThemeProvider";
 import {
+  fetchCalendarDevices,
+  fetchMessageHistory,
+  removeCalendarDevice,
+  updateCalendarPassword,
+} from "@/lib/api";
+import { useTheme } from "@/components/ThemeProvider";
+import { getShiftPattern } from "@/lib/shiftPatterns";
+import {
+  applySalaryProfileRates,
+  availableGrades,
   DEFAULT_HOURLY_RATES,
+  DEFAULT_SALARY_PROFILE,
   DEFAULT_SHIFT_COLORS,
+  formatSalaryProfileLabel,
+  formatWon,
   getOrCreateDeviceId,
+  getSalaryProfile,
+  lookupMonthlySalary,
+  MONTHLY_STATUTORY_HOURS,
+  rankLabel,
+  SALARY_RANKS,
   SHIFT_CELL_LABELS,
   SHIFT_COLOR_KEYS,
   SHIFT_COLOR_PALETTE,
@@ -29,10 +51,14 @@ import {
   storeShiftColors,
   storeShowHoursPreference,
   storeShowPayPreference,
+  unlockDevice,
   type AppTheme,
   type CalendarDevice,
   type CalendarMessage,
   type HourlyRates,
+  type SalaryAgency,
+  type SalaryProfile,
+  type SalaryRankId,
   type ShiftColorKey,
   type ShiftColors,
 } from "@/lib/types";
@@ -40,6 +66,17 @@ import {
 interface SettingsModalProps {
   open: boolean;
   calendarId: string;
+  shareCode: string;
+  calendarName: string;
+  shiftPattern: string;
+  ownerDeviceId: string | null;
+  appPassword: string;
+  passwordVersion: number;
+  onPasswordChanged: (next: {
+    app_password: string;
+    password_version: number;
+  }) => void;
+  onSessionInvalid: () => void;
   onClose: () => void;
   showHours: boolean;
   onShowHoursChange: (show: boolean) => void;
@@ -70,6 +107,14 @@ function isPhoneLike(label: string) {
 export function SettingsModal({
   open,
   calendarId,
+  shareCode,
+  calendarName,
+  shiftPattern,
+  ownerDeviceId,
+  appPassword,
+  passwordVersion,
+  onPasswordChanged,
+  onSessionInvalid: _onSessionInvalid,
   onClose,
   showHours,
   onShowHoursChange,
@@ -90,22 +135,39 @@ export function SettingsModal({
     night: formatRateInput(hourlyRates.night),
     overnight: formatRateInput(hourlyRates.overnight),
   });
+  const [salaryProfile, setSalaryProfile] = useState<SalaryProfile>(
+    DEFAULT_SALARY_PROFILE,
+  );
   const myDeviceId = typeof window !== "undefined" ? getOrCreateDeviceId() : "";
+  const isOwner =
+    Boolean(myDeviceId) &&
+    (ownerDeviceId === myDeviceId || !ownerDeviceId);
+  const pattern = getShiftPattern(shiftPattern);
   const { theme, resolvedTheme, setTheme, schedule, setSchedule } = useTheme();
   const [editingColorKey, setEditingColorKey] = useState<ShiftColorKey | null>(
     null,
   );
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordDraft, setPasswordDraft] = useState(appPassword);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordMsg, setPasswordMsg] = useState<string | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [kickingId, setKickingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setTab("prefs");
     setEditingColorKey(null);
+    setShowPassword(false);
+    setPasswordDraft(appPassword);
+    setPasswordMsg(null);
+    setSalaryProfile(getSalaryProfile());
     setRateDraft({
       day: formatRateInput(hourlyRates.day),
       night: formatRateInput(hourlyRates.night),
       overnight: formatRateInput(hourlyRates.overnight),
     });
-  }, [open, hourlyRates]);
+  }, [open, hourlyRates, appPassword]);
 
   useEffect(() => {
     if (!open || tab === "prefs") return;
@@ -171,16 +233,42 @@ export function SettingsModal({
     setRateDraft((prev) => ({ ...prev, [key]: formatRateInput(value) }));
   };
 
-  const resetRates = () => {
-    const next = { ...DEFAULT_HOURLY_RATES };
-    storeHourlyRates(next);
-    onHourlyRatesChange(next);
+  const applyProfileRates = (nextProfile: SalaryProfile) => {
+    const rates = applySalaryProfileRates(nextProfile);
+    setSalaryProfile(nextProfile);
+    onHourlyRatesChange(rates);
     setRateDraft({
-      day: formatRateInput(next.day),
-      night: formatRateInput(next.night),
-      overnight: formatRateInput(next.overnight),
+      day: formatRateInput(rates.day),
+      night: formatRateInput(rates.night),
+      overnight: formatRateInput(rates.overnight),
     });
   };
+
+  const handleAgencyChange = (agency: SalaryAgency) => {
+    applyProfileRates({ ...salaryProfile, agency });
+  };
+
+  const handleRankChange = (rankId: SalaryRankId) => {
+    const grades = availableGrades(rankId);
+    const grade = grades.includes(salaryProfile.grade)
+      ? salaryProfile.grade
+      : (grades[0] ?? 1);
+    applyProfileRates({ ...salaryProfile, rankId, grade });
+  };
+
+  const handleGradeChange = (grade: number) => {
+    applyProfileRates({ ...salaryProfile, grade });
+  };
+
+  const resetRates = () => {
+    applyProfileRates(salaryProfile);
+  };
+
+  const monthlyBase = lookupMonthlySalary(
+    salaryProfile.rankId,
+    salaryProfile.grade,
+  );
+  const gradeOptions = availableGrades(salaryProfile.rankId);
 
   const setColor = (key: ShiftColorKey, hex: string) => {
     const next = { ...shiftColors, [key]: hex };
@@ -193,6 +281,61 @@ export function SettingsModal({
     storeShiftColors(next);
     onShiftColorsChange(next);
     setEditingColorKey(null);
+  };
+
+  const copyShareCode = async () => {
+    try {
+      await navigator.clipboard.writeText(shareCode);
+      setCopiedCode(true);
+      window.setTimeout(() => setCopiedCode(false), 1500);
+    } catch {
+      setPasswordMsg("코드 복사에 실패했습니다.");
+    }
+  };
+
+  const savePassword = async () => {
+    if (!myDeviceId) return;
+    setPasswordSaving(true);
+    setPasswordMsg(null);
+    try {
+      const next = await updateCalendarPassword({
+        calendarId,
+        newPassword: passwordDraft,
+        actorDeviceId: myDeviceId,
+      });
+      unlockDevice(next.password_version);
+      onPasswordChanged(next);
+      setPasswordMsg("비밀번호를 저장했습니다. 다른 기기는 다시 잠금 해제해야 해요.");
+    } catch (e) {
+      setPasswordMsg(
+        e instanceof Error ? e.message : "비밀번호 저장에 실패했습니다.",
+      );
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
+  const kickDevice = async (device: CalendarDevice) => {
+    if (!myDeviceId || !isOwner) return;
+    if (device.device_id === myDeviceId) return;
+    const ok = window.confirm(
+      `${device.display_name || "이름 없음"} 님을 이 근무표에서 내보낼까요?`,
+    );
+    if (!ok) return;
+    setKickingId(device.id);
+    setError(null);
+    try {
+      await removeCalendarDevice({
+        calendarId,
+        targetDeviceId: device.device_id,
+        actorDeviceId: myDeviceId,
+      });
+      setDevices((prev) => prev.filter((d) => d.id !== device.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "내보내기에 실패했습니다.");
+    } finally {
+      setKickingId(null);
+    }
   };
 
   if (!open) return null;
@@ -244,6 +387,186 @@ export function SettingsModal({
         <div className="max-h-[55vh] space-y-2.5 overflow-y-auto px-5 py-4">
           {tab === "prefs" ? (
             <div className="space-y-3">
+              <div className="rounded-2xl border-2 border-[#007AFF]/30 bg-[#007AFF]/5 px-3 py-3 dark:border-[#007AFF]/40 dark:bg-[#007AFF]/10">
+                <div className="mb-2.5 flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#007AFF]/15 text-[#007AFF]">
+                    <IdCard className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      내 계급·호봉
+                    </p>
+                    <p className="text-[10px] leading-snug text-gray-500 dark:text-gray-400">
+                      진급·호봉 승급 시 여기서 바꾸면 기본급·시급이 갱신돼요.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2.5">
+                  <div>
+                    <p className="mb-1 text-[10px] font-semibold text-gray-500">
+                      직군
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {(
+                        [
+                          { id: "police" as const, label: "경찰" },
+                          { id: "fire" as const, label: "소방" },
+                        ] as const
+                      ).map((opt) => {
+                        const selected = salaryProfile.agency === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => handleAgencyChange(opt.id)}
+                            className={`rounded-lg border px-2 py-1.5 text-[12px] font-semibold transition active:scale-[0.98] ${
+                              selected
+                                ? "border-[#007AFF] bg-[#007AFF]/10 text-[#007AFF]"
+                                : "border-gray-200 bg-white text-gray-700 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-200"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <label className="block min-w-0">
+                      <span className="mb-1 block text-[10px] font-semibold text-gray-500">
+                        계급
+                      </span>
+                      <select
+                        value={salaryProfile.rankId}
+                        onChange={(e) =>
+                          handleRankChange(e.target.value as SalaryRankId)
+                        }
+                        className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[12px] outline-none focus:border-[#007AFF] focus:ring-1 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
+                      >
+                        {SALARY_RANKS.map((rank) => (
+                          <option key={rank.id} value={rank.id}>
+                            {rankLabel(rank, salaryProfile.agency)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block min-w-0">
+                      <span className="mb-1 block text-[10px] font-semibold text-gray-500">
+                        호봉
+                      </span>
+                      <select
+                        value={salaryProfile.grade}
+                        onChange={(e) =>
+                          handleGradeChange(Number(e.target.value))
+                        }
+                        className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[12px] outline-none focus:border-[#007AFF] focus:ring-1 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
+                      >
+                        {gradeOptions.map((g) => (
+                          <option key={g} value={g}>
+                            {g}호봉
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="rounded-xl bg-white px-3 py-2.5 dark:bg-[#0B0F14]">
+                    <p className="text-[10px] font-medium text-gray-400">
+                      봉급표 기본급 · {formatSalaryProfileLabel(salaryProfile)}
+                    </p>
+                    <p className="mt-0.5 text-base font-bold tabular-nums text-gray-900 dark:text-gray-100">
+                      {monthlyBase != null ? formatWon(monthlyBase) : "—"}
+                    </p>
+                    <p className="mt-1 text-[10px] leading-snug text-gray-400">
+                      공무원보수규정(2026) 기준. 통상시급 ≈ 기본급 ÷{" "}
+                      {MONTHLY_STATUTORY_HOURS}시간. 실제 수당·공제와는 다를 수
+                      있어요.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-gray-100 bg-gray-50/80 px-3.5 py-3.5 dark:border-white/10 dark:bg-white/5">
+                <p className="text-[11px] font-semibold text-gray-500">이 근무표</p>
+                <p className="mt-1 text-sm font-bold text-gray-900 dark:text-gray-100">
+                  {calendarName}
+                </p>
+                <p className="mt-0.5 text-[11px] text-gray-500">
+                  교대 유형 · {pattern.name}
+                </p>
+                <div className="mt-3 flex items-center gap-2">
+                  <div className="min-w-0 flex-1 rounded-xl bg-white px-3 py-2 dark:bg-[#0B0F14]">
+                    <p className="text-[10px] text-gray-400">공유 코드</p>
+                    <p className="font-mono text-lg font-bold tracking-[0.2em] text-[#007AFF]">
+                      {shareCode}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void copyShareCode()}
+                    className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-[#007AFF]/10 px-3 text-xs font-semibold text-[#007AFF] transition active:scale-95"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    {copiedCode ? "복사됨" : "복사"}
+                  </button>
+                </div>
+              </div>
+
+              {isOwner ? (
+                <div className="rounded-2xl border border-gray-100 bg-gray-50/80 px-3.5 py-3.5 dark:border-white/10 dark:bg-white/5">
+                  <div className="mb-2 flex items-center gap-2">
+                    <KeyRound className="h-4 w-4 text-[#007AFF]" />
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      잠금 비밀번호
+                    </p>
+                    <span className="rounded-full bg-[#007AFF]/10 px-2 py-0.5 text-[10px] font-semibold text-[#007AFF]">
+                      소유자
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="relative min-w-0 flex-1">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        value={passwordDraft}
+                        onChange={(e) => setPasswordDraft(e.target.value)}
+                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm outline-none focus:border-[#007AFF] dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((v) => !v)}
+                        className="absolute top-1/2 right-2 -translate-y-1/2 text-gray-400"
+                        aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 보기"}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={passwordSaving}
+                      onClick={() => void savePassword()}
+                      className="shrink-0 rounded-xl bg-[#007AFF] px-3 text-xs font-semibold text-white transition active:scale-95 disabled:opacity-60"
+                    >
+                      {passwordSaving ? "저장…" : "변경"}
+                    </button>
+                  </div>
+                  {passwordMsg ? (
+                    <p className="mt-2 text-[11px] leading-relaxed text-gray-500">
+                      {passwordMsg}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-[10px] text-gray-400">
+                      버전 {passwordVersion} · 바꾸면 다른 기기는 다시 잠금 해제
+                    </p>
+                  )}
+                </div>
+              ) : null}
+
               <div className="rounded-2xl border border-gray-100 bg-gray-50/80 px-3.5 py-3.5 dark:border-white/10 dark:bg-white/5">
                 <div className="mb-3 flex items-center gap-2">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#007AFF]/15 text-[#007AFF]">
@@ -374,7 +697,7 @@ export function SettingsModal({
                     기본색
                   </button>
                 </div>
-                <div className="grid grid-cols-5 gap-1.5">
+                <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
                   {SHIFT_COLOR_KEYS.map((key) => {
                     const selected = editingColorKey === key;
                     return (
@@ -452,7 +775,7 @@ export function SettingsModal({
                       예상 월급 보기
                     </p>
                     <p className="text-[10px] leading-snug text-gray-500 dark:text-gray-400">
-                      근무시간 그래프에서 월급 추정치를 봅니다.
+                      근무시간 그래프에서 시급·월급 추정치를 봅니다.
                     </p>
                   </div>
                   <button
@@ -474,17 +797,17 @@ export function SettingsModal({
                 </div>
 
                 {showPay ? (
-                  <div className="mt-2.5 border-t border-gray-200/80 pt-2.5 dark:border-white/10">
-                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <div className="mt-2.5 space-y-2.5 border-t border-gray-200/80 pt-2.5 dark:border-white/10">
+                    <div className="mb-0.5 flex items-center justify-between gap-2">
                       <p className="text-[10px] font-semibold text-gray-500">
-                        시급 (원)
+                        시급 추정 (원)
                       </p>
                       <button
                         type="button"
                         onClick={resetRates}
                         className="text-[10px] font-semibold text-[#007AFF] transition active:opacity-70"
                       >
-                        초임 기본값
+                        봉급표로 다시 맞추기
                       </button>
                     </div>
                     <div className="grid grid-cols-3 gap-1.5">
@@ -564,6 +887,23 @@ export function SettingsModal({
                 설정은 이 기기에만 저장됩니다. 위쪽 월 총 근무시간은 항상
                 표시됩니다.
               </p>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 pt-1 text-[11px]">
+                <a
+                  href="/privacy"
+                  className="font-semibold text-[#007AFF] underline-offset-2 hover:underline"
+                >
+                  개인정보처리방침
+                </a>
+                <span className="text-gray-300 dark:text-white/20">·</span>
+                <a
+                  href="/terms"
+                  className="font-semibold text-[#007AFF] underline-offset-2 hover:underline"
+                >
+                  이용약관
+                </a>
+                <span className="text-gray-300 dark:text-white/20">·</span>
+                <span className="text-gray-400">v1.0.0</span>
+              </div>
             </div>
           ) : loading ? (
             <p className="py-8 text-center text-sm text-gray-400">불러오는 중…</p>
@@ -579,6 +919,7 @@ export function SettingsModal({
             ) : (
               devices.map((device) => {
                 const isMe = device.device_id === myDeviceId;
+                const isDeviceOwner = device.device_id === ownerDeviceId;
                 const Icon = isPhoneLike(device.device_label)
                   ? Smartphone
                   : MonitorSmartphone;
@@ -602,13 +943,18 @@ export function SettingsModal({
                         <Icon className="h-4 w-4" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <p className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
                             {device.display_name || "이름 없음"}
                           </p>
                           {isMe ? (
                             <span className="shrink-0 rounded-full bg-[#007AFF]/10 px-1.5 py-0.5 text-[10px] font-semibold text-[#007AFF]">
                               나
+                            </span>
+                          ) : null}
+                          {isDeviceOwner ? (
+                            <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
+                              소유자
                             </span>
                           ) : null}
                         </div>
@@ -631,6 +977,17 @@ export function SettingsModal({
                             )}
                           </p>
                         </div>
+                        {isOwner && !isMe && !isDeviceOwner ? (
+                          <button
+                            type="button"
+                            disabled={kickingId === device.id}
+                            onClick={() => void kickDevice(device)}
+                            className="mt-2 inline-flex items-center gap-1 rounded-lg bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 transition active:scale-95 disabled:opacity-60 dark:bg-rose-500/15 dark:text-rose-300"
+                          >
+                            <UserMinus className="h-3.5 w-3.5" />
+                            {kickingId === device.id ? "내보내는 중…" : "내보내기"}
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   </div>

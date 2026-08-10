@@ -1,6 +1,10 @@
 import { format } from "date-fns";
 import { getSupabase } from "./supabase";
 import {
+  resolveShiftPatternId,
+  type ShiftPatternId,
+} from "./shiftPatterns";
+import {
   detectDeviceLabel,
   generateShareCode,
   getOrCreateDeviceId,
@@ -13,19 +17,31 @@ import {
   type ShiftType,
 } from "./types";
 
-export async function createCalendar(name: string): Promise<Calendar> {
+export async function createCalendar(
+  name: string,
+  options?: {
+    shiftPattern?: ShiftPatternId | string;
+    appPassword?: string;
+    ownerDeviceId?: string | null;
+  },
+): Promise<Calendar> {
   const supabase = getSupabase();
   const share_code = generateShareCode();
   const fallback =
     process.env.NEXT_PUBLIC_APP_PASSWORD?.trim() || "930308";
+  const password = (options?.appPassword ?? "").trim() || fallback;
+  const owner =
+    options?.ownerDeviceId?.trim() || getOrCreateDeviceId() || null;
 
   const { data, error } = await supabase
     .from("calendars")
     .insert({
       name,
       share_code,
-      app_password: fallback,
+      app_password: password,
       password_version: 1,
+      shift_pattern: resolveShiftPatternId(options?.shiftPattern),
+      owner_device_id: owner,
     })
     .select()
     .single();
@@ -46,6 +62,42 @@ export async function findCalendarByShareCode(
 
   if (error) throw error;
   return data as Calendar | null;
+}
+
+export async function fetchCalendarById(
+  calendarId: string,
+): Promise<Calendar | null> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("calendars")
+    .select("*")
+    .eq("id", calendarId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as Calendar | null;
+}
+
+/** 소유자가 비어 있으면 현재 기기로 한 번 채움 (기존 달력 호환) */
+export async function ensureCalendarOwner(
+  calendarId: string,
+  deviceId: string,
+): Promise<Calendar | null> {
+  const supabase = getSupabase();
+  const current = await fetchCalendarById(calendarId);
+  if (!current) return null;
+  if (current.owner_device_id) return current;
+
+  const { data, error } = await supabase
+    .from("calendars")
+    .update({ owner_device_id: deviceId })
+    .eq("id", calendarId)
+    .is("owner_device_id", null)
+    .select()
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data as Calendar | null) ?? (await fetchCalendarById(calendarId));
 }
 
 /** 잠금 검증용: 달력 비밀번호·버전 */
@@ -77,6 +129,117 @@ export async function fetchCalendarLockInfo(
         ? row.password_version
         : 1,
   };
+}
+
+/** 달력의 교대유형(패턴) 변경 — 예: 경찰 5조3교대 */
+export async function updateCalendarShiftPattern(input: {
+  calendarId: string;
+  shiftPattern: string;
+}): Promise<string> {
+  const resolved = resolveShiftPatternId(input.shiftPattern);
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("calendars")
+    .update({ shift_pattern: resolved })
+    .eq("id", input.calendarId)
+    .select("shift_pattern")
+    .single();
+
+  if (error) throw error;
+  return (data.shift_pattern as string) ?? resolved;
+}
+
+/** 소유자: 잠금 비밀번호 변경 */
+export async function updateCalendarPassword(input: {
+  calendarId: string;
+  newPassword: string;
+  actorDeviceId: string;
+}): Promise<{ app_password: string; password_version: number }> {
+  const calendar = await fetchCalendarById(input.calendarId);
+  if (!calendar) throw new Error("달력을 찾을 수 없습니다.");
+
+  const ownerId = calendar.owner_device_id?.trim();
+  if (ownerId && ownerId !== input.actorDeviceId) {
+    throw new Error("소유자만 비밀번호를 바꿀 수 있습니다.");
+  }
+
+  const nextPassword = input.newPassword.trim();
+  if (nextPassword.length < 4) {
+    throw new Error("비밀번호는 4자 이상으로 해 주세요.");
+  }
+
+  const prevVersion =
+    typeof calendar.password_version === "number" && calendar.password_version > 0
+      ? calendar.password_version
+      : 1;
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("calendars")
+    .update({
+      app_password: nextPassword,
+      password_version: prevVersion + 1,
+      ...(ownerId ? {} : { owner_device_id: input.actorDeviceId }),
+    })
+    .eq("id", input.calendarId)
+    .select("app_password, password_version")
+    .single();
+
+  if (error) throw error;
+  return {
+    app_password: (data.app_password as string) ?? nextPassword,
+    password_version: (data.password_version as number) ?? prevVersion + 1,
+  };
+}
+
+/** 이 기기가 달력 멤버인지 */
+export async function isCalendarDeviceMember(
+  calendarId: string,
+  deviceId: string,
+): Promise<boolean> {
+  if (!deviceId) return false;
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("calendar_devices")
+    .select("id")
+    .eq("calendar_id", calendarId)
+    .eq("device_id", deviceId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return Boolean(data);
+}
+
+/** 소유자: 참여자 기기 내보내기 */
+export async function removeCalendarDevice(input: {
+  calendarId: string;
+  targetDeviceId: string;
+  actorDeviceId: string;
+}): Promise<void> {
+  const calendar = await fetchCalendarById(input.calendarId);
+  if (!calendar) throw new Error("달력을 찾을 수 없습니다.");
+
+  let ownerId = calendar.owner_device_id?.trim() || "";
+  if (!ownerId) {
+    await ensureCalendarOwner(input.calendarId, input.actorDeviceId);
+    ownerId = input.actorDeviceId;
+  }
+
+  if (ownerId !== input.actorDeviceId) {
+    throw new Error("소유자만 참여자를 내보낼 수 있습니다.");
+  }
+  if (input.targetDeviceId === ownerId) {
+    throw new Error("소유자 본인은 내보낼 수 없습니다.");
+  }
+
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("calendar_devices")
+    .delete()
+    .eq("calendar_id", input.calendarId)
+    .eq("device_id", input.targetDeviceId);
+
+  if (error) throw error;
 }
 
 export async function fetchShifts(

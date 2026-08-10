@@ -6,8 +6,11 @@ import { ko } from "date-fns/locale";
 import { X } from "lucide-react";
 import {
   formatHoursLabel,
+  formatSalaryProfileLabel,
   formatWon,
+  lookupMonthlySalary,
   type HourlyRates,
+  type SalaryProfile,
 } from "@/lib/types";
 
 export type HoursBucket = {
@@ -25,6 +28,7 @@ interface MonthHoursModalProps {
   rates: HourlyRates;
   /** 예상 월급·시급 금액 표시 */
   showPay?: boolean;
+  salaryProfile?: SalaryProfile;
   onClose: () => void;
 }
 
@@ -94,6 +98,7 @@ export function MonthHoursModal({
   buckets,
   rates,
   showPay = true,
+  salaryProfile,
   onClose,
 }: MonthHoursModalProps) {
   const pay = useMemo(() => {
@@ -104,6 +109,13 @@ export function MonthHoursModal({
     const estimated = rows.reduce((s, r) => s + r.amount, 0);
     return { rows, estimated: Math.round(estimated) };
   }, [buckets, rates]);
+
+  const tableBase =
+    salaryProfile != null
+      ? lookupMonthlySalary(salaryProfile.rankId, salaryProfile.grade)
+      : null;
+  const profileLabel =
+    salaryProfile != null ? formatSalaryProfileLabel(salaryProfile) : null;
 
   if (!open) return null;
 
@@ -166,18 +178,33 @@ export function MonthHoursModal({
           </div>
 
           {showPay ? (
-            <div className="rounded-2xl bg-[#007AFF]/10 px-4 py-4 dark:bg-[#007AFF]/15">
-              <p className="text-[11px] font-medium text-[#007AFF]/80">
-                이번 달 예상 월급
-              </p>
-              <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-[#007AFF]">
-                {formatWon(pay.estimated)}
-              </p>
-              <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
-                총 {formatHoursLabel(totalHours) || "0"}시간 × 설정 시급 기준
-                추정치예요. 기본값은 경찰 순경 초임(1년차) 근사치이며, 설정에서
-                바꿀 수 있어요.
-              </p>
+            <div className="space-y-2">
+              {tableBase != null && profileLabel ? (
+                <div className="rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3.5 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-[11px] font-medium text-gray-400">
+                    봉급표 기본급 · {profileLabel}
+                  </p>
+                  <p className="mt-1 text-xl font-bold tabular-nums tracking-tight text-gray-900 dark:text-gray-100">
+                    {formatWon(tableBase)}
+                  </p>
+                  <p className="mt-1 text-[10px] leading-relaxed text-gray-400">
+                    공무원보수규정(2026) 월 봉급. 수당·공제 전 금액이에요.
+                  </p>
+                </div>
+              ) : null}
+              <div className="rounded-2xl bg-[#007AFF]/10 px-4 py-4 dark:bg-[#007AFF]/15">
+                <p className="text-[11px] font-medium text-[#007AFF]/80">
+                  이번 달 근무 추정액
+                </p>
+                <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-[#007AFF]">
+                  {formatWon(pay.estimated)}
+                </p>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+                  총 {formatHoursLabel(totalHours) || "0"}시간 × 설정 시급
+                  기준이에요. 시급은 계급·호봉 봉급표에서 산출되며, 설정에서
+                  바꿀 수 있어요.
+                </p>
+              </div>
             </div>
           ) : null}
         </div>

@@ -16,12 +16,16 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { updateCalendarShiftPattern } from "@/lib/api";
 import {
   buildPatternShifts,
   findPatternIndex,
   getRotationDayLabel,
-  ROTATION_10,
-  ROTATION_SHORT_LABELS,
+  getShiftPattern,
+  patternShortLabels,
+  patternSupportsFill,
+  selectableShiftTypes,
+  SHIFT_PATTERNS,
 } from "@/lib/pattern";
 import {
   calcWorkHours,
@@ -36,12 +40,17 @@ import {
   type ShiftType,
 } from "@/lib/types";
 
+/** 자동 채우기가 가능한 교대유형만 */
+const FILLABLE_PATTERNS = SHIFT_PATTERNS.filter((p) => p.rotation.length > 0);
+
 interface ShiftModalProps {
   open: boolean;
   date: Date | null;
   shift?: Shift;
   saving?: boolean;
   shiftColors: ShiftColors;
+  calendarId: string;
+  patternId?: string;
   onClose: () => void;
   onSave: (data: {
     shiftType: ShiftType;
@@ -55,6 +64,7 @@ interface ShiftModalProps {
     items: { date: string; shiftType: ShiftType }[];
   }) => Promise<void>;
   onDelete: (shiftId: string) => Promise<void>;
+  onShiftPatternChange?: (patternId: string) => void;
 }
 
 const SHIFT_OPTIONS: {
@@ -87,29 +97,48 @@ export function ShiftModal({
   shift,
   saving = false,
   shiftColors,
+  calendarId,
+  patternId = "police_5_3_10",
   onClose,
   onSave,
   onSavePattern,
   onDelete,
+  onShiftPatternChange,
 }: ShiftModalProps) {
+  const canFillPattern = patternSupportsFill(patternId);
+  const visibleOptions = useMemo(() => {
+    const allowed = new Set(selectableShiftTypes(patternId));
+    return SHIFT_OPTIONS.filter((o) => allowed.has(o.type));
+  }, [patternId]);
   const [shiftType, setShiftType] = useState<ShiftType>("day");
   const [startTime, setStartTime] = useState("08:00");
   const [endTime, setEndTime] = useState("18:00");
   const [deleting, setDeleting] = useState(false);
   const [fillPattern, setFillPattern] = useState(false);
+  /** 채우기에 쓸 교대유형 (경찰 5조3교대 등) */
+  const [fillPatternId, setFillPatternId] = useState(patternId);
   const [patternIndex, setPatternIndex] = useState(0);
   const [fillDays, setFillDays] = useState(365);
   const [extraHours, setExtraHours] = useState(0);
   const [extraOpen, setExtraOpen] = useState(false);
   const [extraDraft, setExtraDraft] = useState("0");
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const activePatternId = fillPattern ? fillPatternId : patternId;
+  const pattern = getShiftPattern(activePatternId);
+  const rotation = pattern.rotation;
+  const shortLabels = patternShortLabels(activePatternId);
 
   useEffect(() => {
     if (!open) return;
-    const type = shift?.shift_type ?? "day";
+    const allowed = selectableShiftTypes(patternId);
+    const raw = shift?.shift_type ?? allowed[0] ?? "day";
+    const type = allowed.includes(raw) ? raw : (allowed[0] ?? "day");
     setShiftType(type);
     setDeleting(false);
     setFillPattern(false);
-    setPatternIndex(findPatternIndex(type));
+    setFillPatternId(patternId);
+    setPatternIndex(findPatternIndex(type, patternId));
     setFillDays(365);
     const extra = Number(shift?.extra_hours);
     const hasExtra = Number.isFinite(extra) && extra > 0;
@@ -117,16 +146,17 @@ export function ShiftModal({
     setExtraHours(nextExtra);
     setExtraDraft(String(nextExtra));
     setExtraOpen(hasExtra);
+    setSaveError(null);
 
     const defaults = defaultTimesFor(type);
     if (isSupportShift(type) && shift?.start_time && shift?.end_time) {
       setStartTime(shift.start_time.slice(0, 5));
       setEndTime(shift.end_time.slice(0, 5));
     } else {
-      setStartTime(defaults.start);
-      setEndTime(defaults.end);
+      setStartTime(defaults?.start ?? "08:00");
+      setEndTime(defaults?.end ?? "18:00");
     }
-  }, [open, shift]);
+  }, [open, shift, patternId]);
 
   useEffect(() => {
     if (!open) return;
@@ -155,15 +185,29 @@ export function ShiftModal({
   }, [baseHoursPreview, extraHours]);
 
   const previewLine = useMemo(() => {
-    if (!fillPattern) return "";
+    if (!fillPattern || rotation.length === 0) return "";
     const parts: string[] = [];
-    for (let i = 0; i < 10; i++) {
-      parts.push(ROTATION_SHORT_LABELS[(patternIndex + i) % 10]);
+    const n = Math.min(10, rotation.length * 2);
+    for (let i = 0; i < n; i++) {
+      parts.push(shortLabels[(patternIndex + i) % rotation.length] ?? "");
     }
     return parts.join(" → ");
-  }, [fillPattern, patternIndex]);
+  }, [fillPattern, patternIndex, rotation.length, shortLabels]);
 
   if (!open || !date) return null;
+
+  const selectFillPatternId = (nextId: string) => {
+    setFillPatternId(nextId);
+    const rot = getShiftPattern(nextId).rotation;
+    if (rot.length === 0) {
+      setPatternIndex(0);
+      return;
+    }
+    const idx = findPatternIndex(shiftType, nextId);
+    setPatternIndex(idx);
+    const nextType = rot[idx];
+    if (nextType) setShiftType(nextType);
+  };
 
   const selectShiftType = (type: ShiftType) => {
     setShiftType(type);
@@ -181,28 +225,57 @@ export function ShiftModal({
       }
       return;
     }
-    if (fillPattern) setPatternIndex(findPatternIndex(type));
+    if (fillPattern) setPatternIndex(findPatternIndex(type, fillPatternId));
   };
 
   const handleSave = async () => {
-    if (fillPattern && !supportSelected) {
-      const items = buildPatternShifts({
-        startDate: date,
-        patternIndex,
-        dayCount: fillDays,
-      });
-      await onSavePattern({ items });
-      return;
-    }
+    setSaveError(null);
+    try {
+      if (fillPattern && !supportSelected && patternSupportsFill(fillPatternId)) {
+        const items = buildPatternShifts({
+          startDate: date,
+          patternIndex,
+          dayCount: fillDays,
+          patternId: fillPatternId,
+        });
+        // 교대유형을 바꿨다면 달력 설정에도 반영
+        if (fillPatternId !== patternId) {
+          const saved = await updateCalendarShiftPattern({
+            calendarId,
+            shiftPattern: fillPatternId,
+          });
+          onShiftPatternChange?.(saved);
+        }
+        await onSavePattern({ items });
+        return;
+      }
 
-    await onSave({
-      shiftType,
-      note: "",
-      existingId: shift?.id,
-      startTime: supportSelected ? startTime : null,
-      endTime: supportSelected ? endTime : null,
-      extraHours: extraHours > 0 ? extraHours : 0,
-    });
+      await onSave({
+        shiftType,
+        note: "",
+        existingId: shift?.id,
+        startTime: supportSelected ? startTime : null,
+        endTime: supportSelected ? endTime : null,
+        extraHours: extraHours > 0 ? extraHours : 0,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/extra_hours/i.test(msg)) {
+        setSaveError(
+          "추가시간 저장용 DB 컬럼이 아직 없습니다. Supabase에서 migrate-add-extra-hours.sql 을 실행해 주세요.",
+        );
+      } else if (/start_time|end_time/i.test(msg)) {
+        setSaveError(
+          "자원 근무 시간 컬럼이 없습니다. Supabase에서 migrate-add-support-shifts.sql 을 실행해 주세요.",
+        );
+      } else if (/shift_pattern/i.test(msg)) {
+        setSaveError(
+          "교대유형 컬럼이 없습니다. Supabase에서 migrate-add-shift-pattern-owner.sql 을 실행해 주세요.",
+        );
+      } else {
+        setSaveError(msg || "저장에 실패했습니다.");
+      }
+    }
   };
 
   const handleDelete = async () => {
@@ -250,7 +323,7 @@ export function ShiftModal({
               원하는 근무를 고른 뒤 저장하면 이 날짜만 바뀝니다.
             </p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {SHIFT_OPTIONS.map(({ type, icon: Icon, hint }) => {
+              {visibleOptions.map(({ type, icon: Icon, hint }) => {
                 const selected = shiftType === type;
                 const visual = getShiftVisual(type, shiftColors);
                 return (
@@ -463,7 +536,7 @@ export function ShiftModal({
             </div>
           ) : null}
 
-          {!supportSelected ? (
+          {!supportSelected && canFillPattern ? (
             <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3.5 dark:border-white/10 dark:bg-white/5">
               <label className="flex cursor-pointer items-start gap-3">
                 <input
@@ -479,34 +552,67 @@ export function ShiftModal({
                   </p>
                   <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500">
                     하루만 바꿀 때는 체크하지 마세요.
-                    <br />
-                    주→야→심→비→휴 10일 주기로 길게 채울 때만 켭니다.
                   </p>
                 </div>
               </label>
 
               {fillPattern ? (
                 <div className="mt-3 space-y-3 border-t border-[#007AFF]/10 pt-3">
-                  <div>
-                    <label className="mb-1.5 block text-xs font-semibold text-gray-600">
-                      이 날짜는 패턴의 며칠째?
-                    </label>
-                    <select
-                      value={patternIndex}
-                      onChange={(e) => {
-                        const idx = Number(e.target.value);
-                        setPatternIndex(idx);
-                        setShiftType(ROTATION_10[idx]);
-                      }}
-                      className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
-                    >
-                      {Array.from({ length: 10 }, (_, i) => (
-                        <option key={i} value={i}>
-                          {getRotationDayLabel(i)}
-                        </option>
-                      ))}
-                    </select>
+                  {/* 설정한 교대유형 + 패턴 일차를 한 줄에 */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="min-w-0">
+                      <label className="mb-1.5 block text-xs font-semibold text-gray-600">
+                        교대유형
+                      </label>
+                      <select
+                        value={fillPatternId}
+                        onChange={(e) => selectFillPatternId(e.target.value)}
+                        className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-2.5 text-sm outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
+                      >
+                        {FILLABLE_PATTERNS.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="min-w-0">
+                      <label className="mb-1.5 block text-xs font-semibold text-gray-600">
+                        패턴 며칠째
+                      </label>
+                      <select
+                        value={patternIndex}
+                        onChange={(e) => {
+                          const idx = Number(e.target.value);
+                          setPatternIndex(idx);
+                          const nextType = rotation[idx];
+                          if (nextType) setShiftType(nextType);
+                        }}
+                        className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-2.5 text-sm outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
+                      >
+                        {rotation.map((_, i) => (
+                          <option key={i} value={i}>
+                            {getRotationDayLabel(i, fillPatternId)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
+                  <p className="text-[11px] leading-relaxed text-gray-500">
+                    {pattern.hint}
+                  </p>
+
+                  {/* 교대유형을 바꿔도 선택일 이전 근무는 그대로 유지 */}
+                  <p className="rounded-xl border border-amber-200/80 bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                    <span className="font-semibold">
+                      {format(date, "M월 d일", { locale: ko })} 이전 데이터는
+                      변경되지 않습니다.
+                    </span>
+                    <span className="mt-0.5 block text-[11px] text-amber-800/80 dark:text-amber-200/80">
+                      교대유형을 바꿔도 선택일부터 앞으로만 다시 채워지고, 그 전
+                      근무표는 그대로 둡니다.
+                    </span>
+                  </p>
 
                   <div>
                     <p className="mb-1.5 text-xs font-semibold text-gray-600">
@@ -539,14 +645,14 @@ export function ShiftModal({
                       })}{" "}
                       ({fillDays}일)만 갱신
                     </span>
-                    <span className="mt-0.5 block text-gray-400">
-                      {format(date, "M월 d일", { locale: ko })} 이전 근무표는
-                      유지됩니다.
-                    </span>
                   </p>
                 </div>
               ) : null}
             </div>
+          ) : !supportSelected ? (
+            <p className="text-[11px] leading-relaxed text-gray-400">
+              이 달력은 &quot;{pattern.name}&quot; · 하루씩 직접 등록합니다.
+            </p>
           ) : (
             <p className="text-[11px] leading-relaxed text-gray-400">
               주간자원·야간자원은 하루씩 등록하며, 패턴 자동 채우기에는 포함되지
@@ -555,7 +661,13 @@ export function ShiftModal({
           )}
         </div>
 
-        <div className="sticky bottom-0 flex gap-2 border-t border-gray-100 bg-white px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-white/10 dark:bg-[#161B22]">
+        <div className="sticky bottom-0 border-t border-gray-100 bg-white px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-white/10 dark:bg-[#161B22]">
+          {saveError ? (
+            <p className="mb-2 rounded-xl bg-rose-50 px-3 py-2 text-[11px] leading-relaxed text-rose-600 dark:bg-rose-500/15 dark:text-rose-300">
+              {saveError}
+            </p>
+          ) : null}
+          <div className="flex gap-2">
           {shift?.id && !fillPattern ? (
             <button
               type="button"
@@ -588,6 +700,7 @@ export function ShiftModal({
                   : `${fillDays}일 자동 입력`
                 : "이 날짜 저장"}
           </button>
+          </div>
         </div>
       </div>
     </div>

@@ -49,5 +49,17 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Capacitor / Android local
+*.keystore
+*.jks
+android/.gradle/
+android/app/build/
+android/build/
+android/captures/
+android/local.properties
+android/.idea/
+android/*.iml
+.idea/
+
 .vercel
 .env*

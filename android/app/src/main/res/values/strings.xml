@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">넴쿵 교대근무표</string>
+    <string name="title_activity_main">넴쿵 교대근무표</string>
+    <string name="package_name">com.nemkung.shiftcalendar</string>
+    <string name="custom_url_scheme">com.nemkung.shiftcalendar</string>
+</resources>

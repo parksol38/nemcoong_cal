@@ -14,6 +14,10 @@ export interface Calendar {
   created_at: string;
   app_password?: string;
   password_version?: number;
+  /** 교대 패턴 ID (예: police_5_3_10) */
+  shift_pattern?: string | null;
+  /** 달력을 만든 기기 ID */
+  owner_device_id?: string | null;
 }
 
 export interface CalendarLockInfo {
@@ -201,7 +205,12 @@ export function formatShiftHoursDisplay(shift: {
 }
 
 /** 사용자가 바꿀 수 있는 근무 색 키 (자원은 주간/야간 색을 따름) */
-export type ShiftColorKey = "day" | "night" | "overnight" | "rest" | "off";
+export type ShiftColorKey =
+  | "day"
+  | "night"
+  | "overnight"
+  | "rest"
+  | "off";
 
 export type ShiftColors = Record<ShiftColorKey, string>;
 
@@ -322,68 +331,6 @@ export function getShiftVisual(
     solidBorder: hex,
   };
 }
-
-/** @deprecated Tailwind 클래스 — 커스텀 색은 getShiftVisual 사용 */
-export const SHIFT_STYLES: Record<
-  ShiftType,
-  {
-    bg: string;
-    text: string;
-    border: string;
-    chip: string;
-    solid: string;
-  }
-> = {
-  day: {
-    bg: "bg-orange-50 dark:bg-orange-950/45",
-    text: "text-orange-700 dark:text-orange-300",
-    border: "border-orange-300 dark:border-orange-700/60",
-    chip: "bg-orange-500 text-white",
-    solid: "bg-orange-500 border-orange-500 text-white",
-  },
-  night: {
-    bg: "bg-slate-100 dark:bg-slate-800/70",
-    text: "text-slate-800 dark:text-slate-200",
-    border: "border-slate-400 dark:border-slate-500",
-    chip: "bg-[#1B3A5F] text-white",
-    solid: "bg-[#1B3A5F] border-[#1B3A5F] text-white",
-  },
-  overnight: {
-    bg: "bg-slate-200 dark:bg-slate-900/80",
-    text: "text-slate-900 dark:text-slate-100",
-    border: "border-slate-500 dark:border-slate-600",
-    chip: "bg-[#0F2744] text-white ring-1 ring-inset ring-white/30",
-    solid: "bg-[#0F2744] border-[#0F2744] text-white",
-  },
-  rest: {
-    bg: "bg-white dark:bg-white/5",
-    text: "text-gray-400 dark:text-gray-500",
-    border: "border-gray-200 dark:border-white/10",
-    chip: "bg-white text-gray-500 border border-gray-200 dark:bg-white/5 dark:text-gray-400 dark:border-white/15",
-    solid: "bg-white border-gray-300 text-gray-500 dark:bg-white/5 dark:border-white/20 dark:text-gray-400",
-  },
-  off: {
-    bg: "bg-white dark:bg-white/5",
-    text: "text-gray-400 dark:text-gray-500",
-    border: "border-gray-200 dark:border-white/10",
-    chip: "bg-white text-gray-500 border border-gray-200 dark:bg-white/5 dark:text-gray-400 dark:border-white/15",
-    solid: "bg-white border-gray-300 text-gray-500 dark:bg-white/5 dark:border-white/20 dark:text-gray-400",
-  },
-  day_support: {
-    bg: "bg-orange-50 dark:bg-orange-950/45",
-    text: "text-orange-700 dark:text-orange-300",
-    border: "border-orange-300 dark:border-orange-700/60",
-    chip: "bg-orange-500 text-white",
-    solid: "bg-orange-500 border-orange-500 text-white",
-  },
-  night_support: {
-    bg: "bg-slate-100 dark:bg-slate-800/70",
-    text: "text-slate-800 dark:text-slate-200",
-    border: "border-slate-400 dark:border-slate-500",
-    chip: "bg-[#1B3A5F] text-white",
-    solid: "bg-[#1B3A5F] border-[#1B3A5F] text-white",
-  },
-};
 
 export const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"] as const;
 
@@ -574,18 +521,47 @@ export function storeShiftColors(colors: ShiftColors) {
 }
 
 const STORAGE_HOURLY_RATES = "shift-calendar-hourly-rates";
+const STORAGE_SALARY_PROFILE = "shift-calendar-salary-profile";
+
+export type {
+  SalaryAgency,
+  SalaryProfile,
+  SalaryRankId,
+} from "./salaryTable";
+
+export {
+  availableGrades,
+  clampSalaryProfile,
+  DEFAULT_SALARY_PROFILE,
+  formatSalaryProfileLabel,
+  hourlyRatesFromBase,
+  hourlyRatesFromProfile,
+  lookupMonthlySalary,
+  MONTHLY_STATUTORY_HOURS,
+  rankLabel,
+  SALARY_RANKS,
+  getSalaryRank,
+} from "./salaryTable";
+
+import {
+  clampSalaryProfile as clampSalaryProfileFn,
+  DEFAULT_SALARY_PROFILE,
+  hourlyRatesFromProfile,
+  type SalaryProfile,
+} from "./salaryTable";
 
 /**
- * 경찰 순경 초임(1호봉) 근사 시급 기본값 (2026)
- * - 주간: 통상시급 ≈ 기본급 2,133,000 ÷ 209
- * - 야간: 통상 + 야간수당(약 3,725)
- * - 심야: 통상에 야간·심야 가산을 반영한 추정치
+ * 경찰·소방 참고용 시급 기본값 (순경·소방사 1호봉, 2026 봉급표)
+ * - 주간: 통상시급 ≈ 기본급 ÷ 209
+ * - 야간·심야: 통상 대비 가산 비율 적용 추정치
  */
-export const DEFAULT_HOURLY_RATES = {
+export const DEFAULT_HOURLY_RATES = hourlyRatesFromProfile(
+  DEFAULT_SALARY_PROFILE,
+) ?? {
   day: 10200,
   night: 13900,
   overnight: 15500,
-} as const;
+};
 
 export type HourlyRates = {
   day: number;
@@ -593,21 +569,55 @@ export type HourlyRates = {
   overnight: number;
 };
 
+export function getSalaryProfile(): SalaryProfile {
+  if (typeof window === "undefined") return { ...DEFAULT_SALARY_PROFILE };
+  try {
+    const raw = localStorage.getItem(STORAGE_SALARY_PROFILE);
+    if (!raw) return { ...DEFAULT_SALARY_PROFILE };
+    const parsed = JSON.parse(raw) as Partial<SalaryProfile>;
+    return clampSalaryProfileFn(parsed);
+  } catch {
+    return { ...DEFAULT_SALARY_PROFILE };
+  }
+}
+
+export function storeSalaryProfile(profile: SalaryProfile) {
+  if (typeof window === "undefined") return;
+  const next = clampSalaryProfileFn(profile);
+  localStorage.setItem(STORAGE_SALARY_PROFILE, JSON.stringify(next));
+}
+
+/** 계급·호봉에 맞춰 시급을 봉급표 기준으로 덮어씀 */
+export function applySalaryProfileRates(profile: SalaryProfile): HourlyRates {
+  const next = clampSalaryProfileFn(profile);
+  storeSalaryProfile(next);
+  const rates = hourlyRatesFromProfile(next) ?? { ...DEFAULT_HOURLY_RATES };
+  storeHourlyRates(rates);
+  return rates;
+}
+
 export function getHourlyRates(): HourlyRates {
   if (typeof window === "undefined") return { ...DEFAULT_HOURLY_RATES };
   try {
     const raw = localStorage.getItem(STORAGE_HOURLY_RATES);
-    if (!raw) return { ...DEFAULT_HOURLY_RATES };
+    if (!raw) {
+      // 시급이 없으면 저장된 계급·호봉(또는 기본 순경 1호봉)으로 산출
+      const fromProfile =
+        hourlyRatesFromProfile(getSalaryProfile()) ?? DEFAULT_HOURLY_RATES;
+      return { ...fromProfile };
+    }
     const parsed = JSON.parse(raw) as Partial<HourlyRates>;
     const clamp = (n: unknown, fallback: number) => {
       const v = typeof n === "number" ? n : Number(n);
       if (!Number.isFinite(v) || v < 0) return fallback;
       return Math.round(v);
     };
+    const fallback =
+      hourlyRatesFromProfile(getSalaryProfile()) ?? DEFAULT_HOURLY_RATES;
     return {
-      day: clamp(parsed.day, DEFAULT_HOURLY_RATES.day),
-      night: clamp(parsed.night, DEFAULT_HOURLY_RATES.night),
-      overnight: clamp(parsed.overnight, DEFAULT_HOURLY_RATES.overnight),
+      day: clamp(parsed.day, fallback.day),
+      night: clamp(parsed.night, fallback.night),
+      overnight: clamp(parsed.overnight, fallback.overnight),
     };
   } catch {
     return { ...DEFAULT_HOURLY_RATES };
@@ -749,6 +759,21 @@ export function storeCalendarSession(
 export function clearCalendarSession() {
   localStorage.removeItem(STORAGE_CALENDAR_ID);
   localStorage.removeItem(STORAGE_SHARE_CODE);
+  localStorage.removeItem(STORAGE_UNLOCKED);
+  localStorage.removeItem(STORAGE_PASSWORD_VERSION);
+}
+
+const STORAGE_JOINED = "shift-calendar-joined-v1";
+
+/** 온보딩(생성/코드 참여)을 정상 완료했는지 */
+export function wasCalendarJoined(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(STORAGE_JOINED) === "1";
+}
+
+export function markCalendarJoined() {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_JOINED, "1");
 }
 
 /** 6자리 공유 코드 생성 */

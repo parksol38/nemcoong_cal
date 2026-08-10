@@ -16,8 +16,8 @@ create table if not exists public.shifts (
   id uuid primary key default gen_random_uuid(),
   calendar_id uuid not null references public.calendars(id) on delete cascade,
   date date not null,
-  -- day: ??, night: ??, overnight: ??, rest: ??, off: ??
-  -- day_support: ????, night_support: ???? (?? ?? ??)
+  -- day: 주간, night: 야간, overnight: 심야, rest: 비번, off: 휴무
+  -- day_support: 주간자원, night_support: 야간자원
   shift_type text not null check (
     shift_type in (
       'day',

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Noto_Sans_KR } from "next/font/google";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { NativeAppBridge } from "@/components/NativeAppBridge";
 import "./globals.css";
 
 const notoSansKr = Noto_Sans_KR({
@@ -12,7 +13,7 @@ const notoSansKr = Noto_Sans_KR({
 
 export const metadata: Metadata = {
   title: "넴쿵 교대근무표",
-  description: "멋진여자 박네모가 만든 넴쿵 교대근무표",
+  description: "경찰·소방 공무원 전용 교대근무표 · 멋진여자 박네모",
   applicationName: "넴쿵 교대근무표",
   appleWebApp: {
     capable: true,
@@ -64,7 +65,10 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="넴쿵 교대근무표" />
       </head>
       <body className="min-h-full bg-background font-sans text-foreground">
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <NativeAppBridge />
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

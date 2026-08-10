@@ -25,19 +25,23 @@ import {
   formatHoursLabel,
   getHourlyRates,
   getRateCategory,
+  getSalaryProfile,
   getShiftColors,
   getShiftDisplayHours,
   getShiftVisual,
   getShowHoursPreference,
   getShowPayPreference,
+  resolveShiftColorKey,
   SHIFT_CELL_LABELS,
   WEEKDAY_LABELS,
   type HourlyRates,
+  type SalaryProfile,
   type Shift,
   type ShiftChangeLog,
   type ShiftColors,
   type ShiftType,
 } from "@/lib/types";
+import { legendShiftTypes } from "@/lib/pattern";
 import { CalendarDay } from "./CalendarDay";
 import { CalendarHeader } from "./CalendarHeader";
 import { ChangeNoticeModal } from "./ChangeNoticeModal";
@@ -53,6 +57,16 @@ interface MonthCalendarProps {
   calendarName: string;
   shareCode: string;
   displayName: string;
+  shiftPattern: string;
+  ownerDeviceId: string | null;
+  appPassword: string;
+  passwordVersion: number;
+  onPasswordChanged: (next: {
+    app_password: string;
+    password_version: number;
+  }) => void;
+  onSessionInvalid: () => void;
+  onShiftPatternChange?: (patternId: string) => void;
 }
 
 const SWIPE_THRESHOLD = 56;
@@ -61,7 +75,15 @@ const SLIDE_MS = 260;
 export function MonthCalendar({
   calendarId,
   calendarName,
+  shareCode,
   displayName,
+  shiftPattern,
+  ownerDeviceId,
+  appPassword,
+  passwordVersion,
+  onPasswordChanged,
+  onSessionInvalid,
+  onShiftPatternChange,
 }: MonthCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -80,6 +102,7 @@ export function MonthCalendar({
     night: 13900,
     overnight: 15500,
   }));
+  const [salaryProfile, setSalaryProfile] = useState<SalaryProfile | null>(null);
   const [shiftColors, setShiftColors] = useState<ShiftColors>(() => ({
     day: "#F97316",
     night: "#1B3A5F",
@@ -92,8 +115,14 @@ export function MonthCalendar({
     setShowHours(getShowHoursPreference());
     setShowPay(getShowPayPreference());
     setHourlyRates(getHourlyRates());
+    setSalaryProfile(getSalaryProfile());
     setShiftColors(getShiftColors());
   }, []);
+
+  // 설정에서 시급·계급이 바뀌면 봉급 프로필도 다시 읽음
+  useEffect(() => {
+    setSalaryProfile(getSalaryProfile());
+  }, [hourlyRates]);
 
   const trackRef = useRef<HTMLDivElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
@@ -636,11 +665,13 @@ export function MonthCalendar({
         ) : null}
 
         <div className="mt-4 flex flex-wrap justify-center gap-3 text-[11px] text-gray-400">
-          <LegendDot color={shiftColors.day} label="주" />
-          <LegendDot color={shiftColors.night} label="야" />
-          <LegendDot color={shiftColors.overnight} label="심" />
-          <LegendDot color={shiftColors.rest} label="비" />
-          <LegendDot color={shiftColors.off} label="휴" />
+          {legendShiftTypes(shiftPattern).map(({ type, short }) => (
+            <LegendDot
+              key={type}
+              color={shiftColors[resolveShiftColorKey(type)]}
+              label={short}
+            />
+          ))}
         </div>
 
         <SharedMessageBoard
@@ -671,10 +702,13 @@ export function MonthCalendar({
         shift={selectedShift}
         saving={saving}
         shiftColors={shiftColors}
+        calendarId={calendarId}
+        patternId={shiftPattern}
         onClose={() => setModalOpen(false)}
         onSave={handleSave}
         onSavePattern={handleSavePattern}
         onDelete={handleDelete}
+        onShiftPatternChange={onShiftPatternChange}
       />
 
       <ChangeNoticeModal
@@ -687,6 +721,14 @@ export function MonthCalendar({
       <SettingsModal
         open={settingsOpen}
         calendarId={calendarId}
+        shareCode={shareCode}
+        calendarName={calendarName}
+        shiftPattern={shiftPattern}
+        ownerDeviceId={ownerDeviceId}
+        appPassword={appPassword}
+        passwordVersion={passwordVersion}
+        onPasswordChanged={onPasswordChanged}
+        onSessionInvalid={onSessionInvalid}
         showHours={showHours}
         onShowHoursChange={setShowHours}
         showPay={showPay}
@@ -705,6 +747,7 @@ export function MonthCalendar({
         buckets={monthHoursSummary.buckets}
         rates={hourlyRates}
         showPay={showPay}
+        salaryProfile={salaryProfile ?? undefined}
         onClose={() => setHoursModalOpen(false)}
       />
 
