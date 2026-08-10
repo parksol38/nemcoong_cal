@@ -149,10 +149,12 @@ export function summarizeAllowanceInput(
 
   for (const s of shifts) {
     if (!s.date.startsWith(monthPrefix)) continue;
-    if (!WORK_TYPES.has(s.shift_type)) continue;
 
-    // 시간외: 사용자가 입력한 추가 근무 시간
-    overtimeHours += getShiftExtraHours(s);
+    // 시간외: 추가시간은 근무유형과 무관하게 합산 (저장값 우선)
+    const extra = getShiftExtraHours(s);
+    if (extra > 0) overtimeHours += extra;
+
+    if (!WORK_TYPES.has(s.shift_type as ShiftType)) continue;
 
     // 야간: 22~06 겹침 시간 (야간·심야 등)
     nightHours += nightHoursForShift(s);

@@ -289,14 +289,6 @@ export async function upsertShift(input: {
       Number.isFinite(extra) && extra > 0 ? Math.round(extra * 10) / 10 : 0,
   };
 
-  const normalize = (row: Shift): Shift => ({
-    ...row,
-    extra_hours: (() => {
-      const n = Number(row.extra_hours);
-      return Number.isFinite(n) && n > 0 ? Math.round(n * 10) / 10 : 0;
-    })(),
-  });
-
   if (input.existingId) {
     const { data, error } = await supabase
       .from("shifts")
@@ -305,7 +297,13 @@ export async function upsertShift(input: {
       .select("*")
       .single();
     if (error) throw error;
-    return normalize(data as Shift);
+    // 서버 응답에 extra_hours가 빠져도 방금 저장한 값을 유지
+    return {
+      ...(data as Shift),
+      extra_hours: payload.extra_hours,
+      start_time: payload.start_time,
+      end_time: payload.end_time,
+    };
   }
 
   const { data, error } = await supabase
@@ -315,7 +313,12 @@ export async function upsertShift(input: {
     .single();
 
   if (error) throw error;
-  return normalize(data as Shift);
+  return {
+    ...(data as Shift),
+    extra_hours: payload.extra_hours,
+    start_time: payload.start_time,
+    end_time: payload.end_time,
+  };
 }
 
 export async function deleteShift(shiftId: string): Promise<void> {

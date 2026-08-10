@@ -120,12 +120,19 @@ export function useShifts({ calendarId, currentMonth }: UseShiftsOptions) {
               raw,
               "extra_hours",
             );
-            const nextExtra = hasExtraField
-              ? getShiftExtraHours(raw)
-              : idx >= 0
-                ? getShiftExtraHours(prev[idx]!)
-                : 0;
-            const row: Shift = { ...normalizeShift(raw), extra_hours: nextExtra };
+            const incomingExtra = getShiftExtraHours(raw);
+            const prevExtra = idx >= 0 ? getShiftExtraHours(prev[idx]!) : 0;
+            // DB에 extra_hours가 안 남는 경우 realtime이 0으로 덮어쓰지 않게 함
+            let nextExtra = prevExtra;
+            if (!hasExtraField) nextExtra = prevExtra;
+            else if (incomingExtra > 0) nextExtra = incomingExtra;
+            else if (prevExtra > 0) nextExtra = prevExtra;
+            else nextExtra = 0;
+
+            const row: Shift = {
+              ...normalizeShift(raw),
+              extra_hours: nextExtra,
+            };
             if (idx >= 0) {
               const next = [...prev];
               next[idx] = row;
@@ -154,12 +161,20 @@ export function useShifts({ calendarId, currentMonth }: UseShiftsOptions) {
       extraHours?: number | null;
     }) => {
       if (!calendarId) throw new Error("달력이 없습니다.");
-      const saved = normalizeShift(
-        await upsertShift({
-          calendarId,
-          ...input,
-        }),
-      );
+      const requestedExtra =
+        Number.isFinite(Number(input.extraHours)) && Number(input.extraHours) > 0
+          ? Math.round(Number(input.extraHours) * 10) / 10
+          : 0;
+      const saved = {
+        ...normalizeShift(
+          await upsertShift({
+            calendarId,
+            ...input,
+          }),
+        ),
+        // 저장 요청한 추가시간을 항상 반영 (응답 누락 방지)
+        extra_hours: requestedExtra,
+      };
       setShifts((prev) => {
         const idx = prev.findIndex(
           (s) => s.id === saved.id || s.date === saved.date,

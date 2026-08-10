@@ -137,7 +137,7 @@ export function MonthCalendar({
 
   modalOpenRef.current = modalOpen;
 
-  const { loading, error, saveShift, saveShiftsBulk, removeShift, shifts } =
+  const { loading, error, saveShift, saveShiftsBulk, removeShift, shifts, reload } =
     useShifts({
       calendarId,
       currentMonth,
@@ -551,7 +551,10 @@ export function MonthCalendar({
       <main className="mx-auto max-w-3xl px-3 pb-28 pt-3 sm:px-4">
         <button
           type="button"
-          onClick={() => setHoursModalOpen(true)}
+          onClick={() => {
+            setHoursModalOpen(true);
+            void reload();
+          }}
           className="mb-3 w-full rounded-2xl bg-white/80 px-3.5 py-3 text-left shadow-sm transition active:scale-[0.99] dark:bg-[#161B22]/90 dark:shadow-black/20"
         >
           <div className="flex items-center gap-3">
