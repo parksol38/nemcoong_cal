@@ -252,6 +252,9 @@ export function MonthHoursModal({
                   {allowancePay
                     ? ` + 수당 ${formatWon(allowancePay.total)}`
                     : ""}
+                  {allowancePay && allowancePay.overtimePay > 0
+                    ? ` (시간외 ${formatWon(allowancePay.overtimePay)})`
+                    : ""}
                   . 공제·기타수당 전 참고용이에요.
                 </p>
               </div>

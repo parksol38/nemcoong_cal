@@ -230,6 +230,14 @@ export function ShiftModal({
 
   const handleSave = async () => {
     setSaveError(null);
+    // 입력창 값을 저장 직전에 확정 (버튼만 누르고 저장해도 누락되지 않게)
+    const draftExtra = Number(extraDraft);
+    const committedExtra = Number.isFinite(draftExtra)
+      ? Math.min(24, Math.max(0, Math.round(draftExtra * 10) / 10))
+      : 0;
+    setExtraHours(committedExtra);
+    setExtraDraft(String(committedExtra));
+
     try {
       if (fillPattern && !supportSelected && patternSupportsFill(fillPatternId)) {
         const items = buildPatternShifts({
@@ -256,7 +264,7 @@ export function ShiftModal({
         existingId: shift?.id,
         startTime: supportSelected ? startTime : null,
         endTime: supportSelected ? endTime : null,
-        extraHours: extraHours > 0 ? extraHours : 0,
+        extraHours: committedExtra,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

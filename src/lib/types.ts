@@ -165,9 +165,11 @@ export function getShiftBaseHours(shift: {
 }
 
 export function getShiftExtraHours(shift: {
-  extra_hours?: number | null;
+  extra_hours?: number | string | null;
 }): number {
-  const n = Number(shift.extra_hours);
+  const raw = shift.extra_hours;
+  if (raw == null || raw === "") return 0;
+  const n = typeof raw === "string" ? Number.parseFloat(raw) : Number(raw);
   if (!Number.isFinite(n) || n <= 0) return 0;
   return Math.round(n * 10) / 10;
 }

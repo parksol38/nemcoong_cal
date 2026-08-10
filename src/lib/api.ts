@@ -289,25 +289,33 @@ export async function upsertShift(input: {
       Number.isFinite(extra) && extra > 0 ? Math.round(extra * 10) / 10 : 0,
   };
 
+  const normalize = (row: Shift): Shift => ({
+    ...row,
+    extra_hours: (() => {
+      const n = Number(row.extra_hours);
+      return Number.isFinite(n) && n > 0 ? Math.round(n * 10) / 10 : 0;
+    })(),
+  });
+
   if (input.existingId) {
     const { data, error } = await supabase
       .from("shifts")
       .update(payload)
       .eq("id", input.existingId)
-      .select()
+      .select("*")
       .single();
     if (error) throw error;
-    return data as Shift;
+    return normalize(data as Shift);
   }
 
   const { data, error } = await supabase
     .from("shifts")
     .upsert(payload, { onConflict: "calendar_id,date" })
-    .select()
+    .select("*")
     .single();
 
   if (error) throw error;
-  return data as Shift;
+  return normalize(data as Shift);
 }
 
 export async function deleteShift(shiftId: string): Promise<void> {

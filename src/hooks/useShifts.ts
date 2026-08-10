@@ -11,11 +11,18 @@ import {
 } from "date-fns";
 import { deleteShift, fetchShifts, upsertShift, upsertShiftsBulk } from "@/lib/api";
 import { getSupabase } from "@/lib/supabase";
-import type { Shift, ShiftType } from "@/lib/types";
+import { getShiftExtraHours, type Shift, type ShiftType } from "@/lib/types";
 
 interface UseShiftsOptions {
   calendarId: string | null;
   currentMonth: Date;
+}
+
+function normalizeShift(row: Shift): Shift {
+  return {
+    ...row,
+    extra_hours: getShiftExtraHours(row),
+  };
 }
 
 function monthRange(month: Date, pad: number) {
@@ -42,7 +49,7 @@ export function useShifts({ calendarId, currentMonth }: UseShiftsOptions) {
       setShifts((prev) => {
         const map = new Map(prev.map((s) => [s.date, s]));
         for (const row of incoming) {
-          map.set(row.date, row);
+          map.set(row.date, normalizeShift(row));
         }
         return Array.from(map.values());
       });
@@ -104,11 +111,21 @@ export function useShifts({ calendarId, currentMonth }: UseShiftsOptions) {
             return;
           }
 
-          const row = payload.new as Shift;
+          const raw = payload.new as Shift;
           setShifts((prev) => {
             const idx = prev.findIndex(
-              (s) => s.id === row.id || s.date === row.date,
+              (s) => s.id === raw.id || s.date === raw.date,
             );
+            const hasExtraField = Object.prototype.hasOwnProperty.call(
+              raw,
+              "extra_hours",
+            );
+            const nextExtra = hasExtraField
+              ? getShiftExtraHours(raw)
+              : idx >= 0
+                ? getShiftExtraHours(prev[idx]!)
+                : 0;
+            const row: Shift = { ...normalizeShift(raw), extra_hours: nextExtra };
             if (idx >= 0) {
               const next = [...prev];
               next[idx] = row;
@@ -137,10 +154,12 @@ export function useShifts({ calendarId, currentMonth }: UseShiftsOptions) {
       extraHours?: number | null;
     }) => {
       if (!calendarId) throw new Error("달력이 없습니다.");
-      const saved = await upsertShift({
-        calendarId,
-        ...input,
-      });
+      const saved = normalizeShift(
+        await upsertShift({
+          calendarId,
+          ...input,
+        }),
+      );
       setShifts((prev) => {
         const idx = prev.findIndex(
           (s) => s.id === saved.id || s.date === saved.date,
