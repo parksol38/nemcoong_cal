@@ -18,6 +18,8 @@
 5. Play Console에 업로드 + 개인정보처리방침 URL 등록  
 6. 내부 테스트 → 프로덕션 출시  
 
+> **Play Console 체크리스트**: [PLAY_STORE_CHECKLIST.md](./PLAY_STORE_CHECKLIST.md) — 정책·데이터 안전성·암호화 선언 답변 포함
+
 ---
 
 ## 1. PC에 필요한 프로그램
@@ -135,8 +137,10 @@ Android Studio에서:
 | 항목 | 내용 |
 |------|------|
 | 개인정보처리방침 | `https://shift-calendar-three.vercel.app/privacy` |
+| 데이터 삭제 안내 | `https://shift-calendar-three.vercel.app/data-deletion` |
 | 이용약관(선택) | `https://shift-calendar-three.vercel.app/terms` |
-| 데이터 안전성 | 닉네임·앱 활동·기기 ID 등 수집 여부 정직하게 표시 |
+| 문의 이메일 | Vercel `NEXT_PUBLIC_SUPPORT_EMAIL` (Play Console 개발자 이메일과 동일 권장) |
+| 데이터 안전성 | 닉네임·앱 활동·기기 ID 등 수집 여부 정직하게 표시 ([체크리스트](./PLAY_STORE_CHECKLIST.md) 참고) |
 | 스크린샷 | 휴대전화 기준 최소 2장 이상 |
 | 앱 아이콘 | 512×512 |
 | 기능 그래픽 | 스토어 요구 사이즈에 맞게 |
@@ -159,7 +163,8 @@ Android Studio에서:
 
 - **인터넷 필수**: 앱은 웹 서버를 로드합니다. 오프라인에서는 동작이 제한됩니다.  
 - **URL/SSL**: `server.url` 은 반드시 HTTPS.  
-- **정책 페이지 404**: Vercel에 `/privacy`, `/terms` 배포가 되어 있어야 합니다.  
+- **정책 페이지 404**: Vercel에 `/privacy`, `/terms`, `/data-deletion` 배포가 되어 있어야 합니다.  
+- **문의 이메일 미설정**: `.env.local` / Vercel에 `NEXT_PUBLIC_SUPPORT_EMAIL` 설정 후 재배포하세요.
 - **키스토어 분실**: 업데이트 불가에 가깝습니다. 백업 필수.  
 - **package name 변경**: `com.nemkung.shiftcalendar` 은 스토어에 올린 뒤 바꾸기 어렵습니다.  
 

@@ -16,6 +16,8 @@ export interface Calendar {
   password_version?: number;
   /** 교대 패턴 ID (예: police_5_3_10) */
   shift_pattern?: string | null;
+  /** 직군 테마 (경찰/소방) */
+  agency?: "police" | "fire" | null;
   /** 달력을 만든 기기 ID */
   owner_device_id?: string | null;
 }
@@ -36,6 +38,10 @@ export interface Shift {
   end_time?: string | null; // HH:mm
   /** 교육 등 근무시간 외 추가 시간 */
   extra_hours?: number | null;
+  /** 추가시간 중 근무 시작 전에 붙인 시간 */
+  extra_before_hours?: number | null;
+  /** 추가시간 중 근무 종료 후에 붙인 시간 */
+  extra_after_hours?: number | null;
   updated_by: string;
   created_at: string;
   updated_at: string;
@@ -72,6 +78,8 @@ export interface CalendarMessage {
   id: string;
   calendar_id: string;
   body: string;
+  /** 카메라 촬영 JPEG data URL (최신 1건에만, 별도 보관 없음) */
+  photo?: string | null;
   updated_by: string;
   created_at: string;
 }
@@ -172,6 +180,27 @@ export function getShiftExtraHours(shift: {
   const n = typeof raw === "string" ? Number.parseFloat(raw) : Number(raw);
   if (!Number.isFinite(n) || n <= 0) return 0;
   return Math.round(n * 10) / 10;
+}
+
+function parseNonNegHours(raw: number | string | null | undefined): number {
+  if (raw == null || raw === "") return 0;
+  const n = typeof raw === "string" ? Number.parseFloat(raw) : Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.round(n * 10) / 10;
+}
+
+/** 추가시간 중 시작 전 배치 */
+export function getShiftExtraBeforeHours(shift: {
+  extra_before_hours?: number | string | null;
+}): number {
+  return parseNonNegHours(shift.extra_before_hours);
+}
+
+/** 추가시간 중 종료 후 배치 */
+export function getShiftExtraAfterHours(shift: {
+  extra_after_hours?: number | string | null;
+}): number {
+  return parseNonNegHours(shift.extra_after_hours);
 }
 
 /** 기본 근무 + 추가 시간 (합계, 월급·월합계용) */
@@ -656,13 +685,20 @@ export function formatWon(amount: number): string {
 /** 이 기기의 고유 ID (없으면 생성) */
 export function getOrCreateDeviceId(): string {
   if (typeof window === "undefined") return "";
-  const existing = localStorage.getItem(STORAGE_DEVICE_ID);
-  if (existing) return existing;
+  const existing =
+    localStorage.getItem(STORAGE_DEVICE_ID) ||
+    sessionStorage.getItem(STORAGE_DEVICE_ID);
+  if (existing) {
+    localStorage.setItem(STORAGE_DEVICE_ID, existing);
+    sessionStorage.setItem(STORAGE_DEVICE_ID, existing);
+    return existing;
+  }
   const id =
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
       : `dev-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   localStorage.setItem(STORAGE_DEVICE_ID, id);
+  sessionStorage.setItem(STORAGE_DEVICE_ID, id);
   return id;
 }
 

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import Image from "next/image";
@@ -13,6 +13,14 @@ import {
   SHIFT_PATTERNS,
   type ShiftPatternId,
 } from "@/lib/shiftPatterns";
+import {
+  AGENCY_LABELS,
+  inferAgencyFromPattern,
+  isAgencyTheme,
+  storeAgencyTheme,
+  type AgencyTheme,
+} from "@/lib/agencyTheme";
+import { APP_NAME, APP_TAGLINE } from "@/lib/legal";
 import {
   getOrCreateDeviceId,
   getStoredDisplayName,
@@ -33,6 +41,7 @@ interface OnboardingProps {
     calendarName: string;
     displayName: string;
     shiftPattern: string;
+    agency: AgencyTheme;
     ownerDeviceId: string | null;
     appPassword: string;
     passwordVersion: number;
@@ -44,7 +53,8 @@ export function Onboarding({ onJoined }: OnboardingProps) {
     "welcome",
   );
   const [displayName, setDisplayName] = useState("");
-  const [calendarName, setCalendarName] = useState("넴쿵 교대근무표");
+  const [calendarName, setCalendarName] = useState(APP_NAME);
+  const [agency, setAgency] = useState<AgencyTheme>("police");
   const [shareCode, setShareCode] = useState("");
   const [password, setPassword] = useState("");
   const [patternId, setPatternId] = useState<ShiftPatternId>(
@@ -64,6 +74,7 @@ export function Onboarding({ onJoined }: OnboardingProps) {
     calendarName: string;
     displayName: string;
     shiftPattern: string;
+    agency: AgencyTheme;
     ownerDeviceId: string | null;
     appPassword: string;
     passwordVersion: number;
@@ -71,6 +82,7 @@ export function Onboarding({ onJoined }: OnboardingProps) {
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agreedToLegal, setAgreedToLegal] = useState(false);
 
   const finishJoin = async (info: {
     calendarId: string;
@@ -78,11 +90,13 @@ export function Onboarding({ onJoined }: OnboardingProps) {
     calendarName: string;
     displayName: string;
     shiftPattern: string;
+    agency: AgencyTheme;
     ownerDeviceId: string | null;
     appPassword: string;
     passwordVersion: number;
   }) => {
     storeCalendarSession(info.calendarId, info.shareCode, info.displayName);
+    storeAgencyTheme(info.agency);
     unlockDevice(info.passwordVersion);
     try {
       await registerCalendarDevice({
@@ -109,9 +123,10 @@ export function Onboarding({ onJoined }: OnboardingProps) {
     try {
       const deviceId = getOrCreateDeviceId();
       const calendar = await createCalendar(
-        calendarName.trim() || "넴쿵 교대근무표",
+        calendarName.trim() || APP_NAME,
         {
           shiftPattern: patternId,
+          agency,
           appPassword: password.trim(),
           ownerDeviceId: deviceId,
         },
@@ -122,6 +137,9 @@ export function Onboarding({ onJoined }: OnboardingProps) {
         calendarName: calendar.name,
         displayName: displayName.trim(),
         shiftPattern: calendar.shift_pattern ?? patternId,
+        agency: isAgencyTheme(calendar.agency)
+          ? calendar.agency
+          : agency,
         ownerDeviceId: calendar.owner_device_id ?? deviceId,
         appPassword: calendar.app_password ?? password.trim(),
         passwordVersion: calendar.password_version ?? 1,
@@ -133,9 +151,9 @@ export function Onboarding({ onJoined }: OnboardingProps) {
         e && typeof e === "object" && "message" in e
           ? String((e as { message: string }).message)
           : "달력 생성에 실패했습니다.";
-      if (/shift_pattern|owner_device_id/i.test(msg)) {
+      if (/shift_pattern|owner_device_id|agency/i.test(msg)) {
         setError(
-          "DB에 교대유형 컬럼이 없습니다. Supabase에서 migrate-add-shift-pattern-owner.sql 을 실행해 주세요.",
+          "DB에 필요한 컬럼이 없습니다. Supabase에서 migrate-add-shift-pattern-owner.sql, migrate-add-agency.sql 을 실행해 주세요.",
         );
       } else {
         setError(msg);
@@ -162,12 +180,16 @@ export function Onboarding({ onJoined }: OnboardingProps) {
         setError("공유 코드를 찾을 수 없습니다.");
         return;
       }
+      const resolvedAgency: AgencyTheme = isAgencyTheme(calendar.agency)
+        ? calendar.agency
+        : inferAgencyFromPattern(calendar.shift_pattern);
       await finishJoin({
         calendarId: calendar.id,
         shareCode: calendar.share_code,
         calendarName: calendar.name,
         displayName: displayName.trim(),
         shiftPattern: calendar.shift_pattern ?? DEFAULT_SHIFT_PATTERN,
+        agency: resolvedAgency,
         ownerDeviceId: calendar.owner_device_id ?? null,
         appPassword: calendar.app_password ?? "",
         passwordVersion: calendar.password_version ?? 1,
@@ -195,37 +217,62 @@ export function Onboarding({ onJoined }: OnboardingProps) {
   };
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center bg-gradient-to-b from-[#E8F1FF] via-[#F2F2F7] to-white px-5 py-10 dark:from-[#0B0F14] dark:via-[#0B0F14] dark:to-[#161B22]">
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-gradient-to-b from-[var(--hero-from)] via-[var(--hero-via)] to-[var(--hero-to)] px-5 py-10">
       <div className="w-full max-w-sm animate-scale-in">
         <div className="mb-6 text-center">
           <Image
-            src="/images/couple-sticker.png"
-            alt="넴쿵 교대근무표"
+            src="/images/app-icon.png"
+            alt={APP_NAME}
             width={200}
             height={200}
             priority
-            className="mx-auto mb-3 h-auto w-[148px] drop-shadow-lg sm:w-[168px]"
+            className="mx-auto mb-3 h-auto w-[132px] rounded-[24px] shadow-2xl shadow-black/25 sm:w-[148px]"
           />
-          <h1 className="text-center text-xl font-bold leading-snug tracking-tight text-gray-900 dark:text-gray-100 sm:text-2xl">
-            넴쿵 교대근무표
+          <h1 className="text-center text-2xl font-bold leading-snug tracking-tight text-white">
+            {APP_NAME}
           </h1>
-          <p className="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
-            경찰·소방 교대 유형을 고르고 근무표를 만들거나,
-            <br />
-            공유 코드로 같은 달력에 참여하세요.
+          <p className="mt-2 text-sm leading-relaxed text-white/80">
+            {APP_TAGLINE}
           </p>
         </div>
 
         <div className="rounded-3xl bg-white p-5 shadow-xl shadow-black/5 dark:bg-[#161B22] dark:shadow-black/40">
           {mode === "welcome" ? (
             <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                {(["police", "fire"] as const).map((id) => {
+                  const selected = agency === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => {
+                        setAgency(id);
+                        storeAgencyTheme(id);
+                      }}
+                      className={`rounded-2xl px-3 py-3 text-left transition active:scale-[0.98] ${
+                        selected
+                          ? "bg-accent text-white ring-2 ring-white/60"
+                          : "bg-white/90 text-gray-800 dark:bg-white/10 dark:text-gray-100"
+                      }`}
+                    >
+                      <p className="text-sm font-bold">{AGENCY_LABELS[id]}</p>
+                      <p
+                        className={`mt-0.5 text-[10px] ${selected ? "text-white/80" : "text-gray-500"}`}
+                      >
+                        {id === "police" ? "경찰 테마" : "소방 테마"}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
               <button
                 type="button"
                 onClick={() => {
                   setMode("create");
                   setError(null);
                 }}
-                className="flex w-full items-center gap-3 rounded-2xl bg-[#007AFF] px-4 py-4 text-left text-white transition active:scale-[0.98]"
+                className="flex w-full items-center gap-3 rounded-2xl bg-accent px-4 py-4 text-left text-white transition active:scale-[0.98]"
               >
                 <Plus className="h-5 w-5 shrink-0" />
                 <div>
@@ -243,7 +290,7 @@ export function Onboarding({ onJoined }: OnboardingProps) {
                 }}
                 className="flex w-full items-center gap-3 rounded-2xl bg-gray-100 px-4 py-4 text-left text-gray-800 transition active:scale-[0.98] dark:bg-white/10 dark:text-gray-100"
               >
-                <Link2 className="h-5 w-5 shrink-0 text-[#007AFF]" />
+                <Link2 className="h-5 w-5 shrink-0 text-accent" />
                 <div>
                   <p className="font-semibold">공유 코드로 참여</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -261,9 +308,9 @@ export function Onboarding({ onJoined }: OnboardingProps) {
                     if (prev) setDisplayName(prev);
                     setError(null);
                   }}
-                  className="w-full rounded-2xl border border-dashed border-[#007AFF]/40 bg-[#007AFF]/5 px-4 py-3 text-left transition active:scale-[0.98]"
+                  className="w-full rounded-2xl border border-dashed border-accent/40 bg-accent/5 px-4 py-3 text-left transition active:scale-[0.98]"
                 >
-                  <p className="text-sm font-semibold text-[#007AFF]">
+                  <p className="text-sm font-semibold text-accent">
                     예전에 이 기기에서 쓰던 달력 이어가기
                   </p>
                   <p className="mt-0.5 text-[11px] text-gray-500">
@@ -271,11 +318,22 @@ export function Onboarding({ onJoined }: OnboardingProps) {
                   </p>
                 </button>
               ) : null}
+              <p className="text-center text-[11px] leading-relaxed text-gray-400">
+                계속하면{" "}
+                <a href="/terms" className="font-semibold text-accent">
+                  이용약관
+                </a>
+                {" · "}
+                <a href="/privacy" className="font-semibold text-accent">
+                  개인정보처리방침
+                </a>
+                에 동의한 것으로 봅니다.
+              </p>
             </div>
           ) : mode === "created" && created ? (
             <div className="space-y-4">
-              <div className="rounded-2xl bg-[#007AFF]/10 px-4 py-4 text-center">
-                <p className="text-xs font-semibold text-[#007AFF]">
+              <div className="rounded-2xl bg-accent/10 px-4 py-4 text-center">
+                <p className="text-xs font-semibold text-accent">
                   공유 코드가 발급됐어요
                 </p>
                 <p className="mt-2 font-mono text-3xl font-bold tracking-[0.25em] text-gray-900 dark:text-gray-100">
@@ -306,7 +364,7 @@ export function Onboarding({ onJoined }: OnboardingProps) {
                 type="button"
                 disabled={loading}
                 onClick={() => void finishJoin(created)}
-                className="h-12 w-full rounded-2xl bg-[#007AFF] text-sm font-semibold text-white transition active:scale-[0.98] disabled:opacity-60"
+                className="h-12 w-full rounded-2xl bg-accent text-sm font-semibold text-white transition active:scale-[0.98] disabled:opacity-60"
               >
                 근무표 시작하기
               </button>
@@ -319,7 +377,7 @@ export function Onboarding({ onJoined }: OnboardingProps) {
                   setMode("welcome");
                   setError(null);
                 }}
-                className="text-sm font-medium text-[#007AFF]"
+                className="text-sm font-medium text-accent"
               >
                 ← 뒤로
               </button>
@@ -331,8 +389,8 @@ export function Onboarding({ onJoined }: OnboardingProps) {
                 <input
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="예: 네모"
-                  className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-[#007AFF] focus:bg-white focus:ring-2 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
+                  placeholder="예: 김출동"
+                  className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
                 />
               </div>
 
@@ -340,12 +398,40 @@ export function Onboarding({ onJoined }: OnboardingProps) {
                 <>
                   <div>
                     <label className="mb-1.5 block text-sm font-semibold text-gray-700 dark:text-gray-200">
+                      직군
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["police", "fire"] as const).map((id) => {
+                        const selected = agency === id;
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => {
+                              setAgency(id);
+                              storeAgencyTheme(id);
+                            }}
+                            className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition active:scale-[0.99] ${
+                              selected
+                                ? "bg-accent/10 text-accent ring-2 ring-accent"
+                                : "bg-gray-50 text-gray-700 dark:bg-white/5 dark:text-gray-200"
+                            }`}
+                          >
+                            {AGENCY_LABELS[id]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-sm font-semibold text-gray-700 dark:text-gray-200">
                       달력 이름
                     </label>
                     <input
                       value={calendarName}
                       onChange={(e) => setCalendarName(e.target.value)}
-                      className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-[#007AFF] focus:bg-white focus:ring-2 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
+                      className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
                     />
                   </div>
 
@@ -366,12 +452,12 @@ export function Onboarding({ onJoined }: OnboardingProps) {
                             onClick={() => setPatternId(p.id)}
                             className={`w-full rounded-xl px-3 py-2.5 text-left transition active:scale-[0.99] ${
                               selected
-                                ? "bg-[#007AFF]/10 ring-2 ring-[#007AFF]"
+                                ? "bg-accent/10 ring-2 ring-accent"
                                 : "hover:bg-gray-50 dark:hover:bg-white/5"
                             }`}
                           >
                             <p
-                              className={`text-sm font-semibold ${selected ? "text-[#007AFF]" : "text-gray-800 dark:text-gray-100"}`}
+                              className={`text-sm font-semibold ${selected ? "text-accent" : "text-gray-800 dark:text-gray-100"}`}
                             >
                               {p.name}
                             </p>
@@ -393,7 +479,7 @@ export function Onboarding({ onJoined }: OnboardingProps) {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="4자 이상"
-                      className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-[#007AFF] focus:bg-white focus:ring-2 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
+                      className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
                     />
                     <p className="mt-1 text-[10px] text-gray-400">
                       나중에 설정에서 조회·수정할 수 있어요.
@@ -410,7 +496,7 @@ export function Onboarding({ onJoined }: OnboardingProps) {
                     onChange={(e) => setShareCode(e.target.value.toUpperCase())}
                     placeholder="예: AB12CD"
                     maxLength={6}
-                    className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-center font-mono text-lg tracking-[0.3em] outline-none focus:border-[#007AFF] focus:bg-white focus:ring-2 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
+                    className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-center font-mono text-lg tracking-[0.3em] outline-none focus:border-accent focus:bg-white focus:ring-2 focus:ring-accent/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
                   />
                 </div>
               )}
@@ -421,13 +507,32 @@ export function Onboarding({ onJoined }: OnboardingProps) {
                 </p>
               ) : null}
 
+              <label className="flex cursor-pointer items-start gap-2.5 rounded-2xl border border-gray-100 bg-gray-50/80 px-3.5 py-3 dark:border-white/10 dark:bg-white/5">
+                <input
+                  type="checkbox"
+                  checked={agreedToLegal}
+                  onChange={(e) => setAgreedToLegal(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-accent focus:ring-accent"
+                />
+                <span className="text-[11px] leading-relaxed text-gray-600 dark:text-gray-300">
+                  <a href="/terms" className="font-semibold text-accent">
+                    이용약관
+                  </a>
+                  {" 및 "}
+                  <a href="/privacy" className="font-semibold text-accent">
+                    개인정보처리방침
+                  </a>
+                  에 동의합니다.
+                </span>
+              </label>
+
               <button
                 type="button"
-                disabled={loading}
+                disabled={loading || !agreedToLegal}
                 onClick={() =>
                   void (mode === "create" ? handleCreate() : handleJoin())
                 }
-                className="h-12 w-full rounded-2xl bg-[#007AFF] text-sm font-semibold text-white transition active:scale-[0.98] disabled:opacity-60"
+                className="h-12 w-full rounded-2xl bg-accent text-sm font-semibold text-white transition active:scale-[0.98] disabled:opacity-60"
               >
                 {loading
                   ? "처리 중…"

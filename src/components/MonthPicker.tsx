@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
@@ -162,7 +162,7 @@ export function MonthPicker({ open, value, onClose, onConfirm }: MonthPickerProp
         <div className="relative px-4 py-2">
           {/* 중앙 선택 하이라이트 */}
           <div
-            className="pointer-events-none absolute inset-x-4 top-1/2 z-10 -translate-y-1/2 rounded-2xl bg-[#007AFF]/08 ring-1 ring-[#007AFF]/15"
+            className="pointer-events-none absolute inset-x-4 top-1/2 z-10 -translate-y-1/2 rounded-2xl bg-accent/08 ring-1 ring-accent/15"
             style={{ height: ITEM_H }}
           />
           {/* 위·아래 페이드 */}
@@ -189,7 +189,7 @@ export function MonthPicker({ open, value, onClose, onConfirm }: MonthPickerProp
           <button
             type="button"
             onClick={handleConfirm}
-            className="h-12 w-full rounded-2xl bg-[#007AFF] text-sm font-semibold text-white transition active:scale-[0.98]"
+            className="h-12 w-full rounded-2xl bg-accent text-sm font-semibold text-white transition active:scale-[0.98]"
           >
             이 달로 이동
           </button>

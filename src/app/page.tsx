@@ -7,6 +7,14 @@ import { MonthCalendar } from "@/components/MonthCalendar";
 import { NicknameSetup } from "@/components/NicknameSetup";
 import { Onboarding } from "@/components/Onboarding";
 import { SplashScreen } from "@/components/SplashScreen";
+import { AgencyThemeProvider } from "@/components/AgencyThemeProvider";
+import {
+  inferAgencyFromPattern,
+  isAgencyTheme,
+  storeAgencyTheme,
+  type AgencyTheme,
+} from "@/lib/agencyTheme";
+import { APP_NAME } from "@/lib/legal";
 import {
   ensureCalendarOwner,
   fetchCalendarById,
@@ -31,7 +39,7 @@ import {
 const LEGACY_CALENDAR = {
   id: process.env.NEXT_PUBLIC_CALENDAR_ID ?? "4f249c62-27c1-46e0-b632-e978905f204e",
   shareCode: process.env.NEXT_PUBLIC_CALENDAR_SHARE_CODE ?? "M3CA64",
-  name: "멋진여자 박네모가 만든 넴쿵 교대근무표",
+  name: APP_NAME,
 };
 
 type SessionInfo = {
@@ -39,6 +47,7 @@ type SessionInfo = {
   shareCode: string;
   calendarName: string;
   shiftPattern: string;
+  agency: AgencyTheme;
   ownerDeviceId: string | null;
 };
 
@@ -103,11 +112,17 @@ export default function HomePage() {
       const password = lock?.app_password ?? null;
       const ok = isDeviceUnlocked(version);
 
+      const agency: AgencyTheme = isAgencyTheme(calendar.agency)
+        ? calendar.agency
+        : inferAgencyFromPattern(calendar.shift_pattern);
+      storeAgencyTheme(agency);
+
       setSession({
         calendarId: calendar.id,
         shareCode: calendar.share_code || shareCode,
         calendarName: calendar.name || LEGACY_CALENDAR.name,
         shiftPattern: calendar.shift_pattern ?? DEFAULT_SHIFT_PATTERN,
+        agency,
         ownerDeviceId: calendar.owner_device_id ?? null,
       });
       setLockPassword(password);
@@ -206,16 +221,19 @@ export default function HomePage() {
       calendarName: string;
       displayName: string;
       shiftPattern: string;
+      agency: AgencyTheme;
       ownerDeviceId: string | null;
       appPassword: string;
       passwordVersion: number;
     }) => {
       markCalendarJoined();
+      storeAgencyTheme(info.agency);
       setSession({
         calendarId: info.calendarId,
         shareCode: info.shareCode,
         calendarName: info.calendarName,
         shiftPattern: info.shiftPattern,
+        agency: info.agency,
         ownerDeviceId: info.ownerDeviceId,
       });
       setDisplayName(info.displayName);
@@ -247,8 +265,8 @@ export default function HomePage() {
 
   if (!ready) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-[#F2F2F7] dark:bg-[#0B0F14]">
-        <div className="h-8 w-8 animate-pulse rounded-full bg-[#007AFF]/30" />
+      <div className="flex min-h-dvh items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-pulse rounded-full bg-accent/30" />
       </div>
     );
   }
@@ -272,31 +290,48 @@ export default function HomePage() {
     );
   }
 
+  const sessionAgency = session?.agency;
+
   if (needsOnboarding || !session) {
-    return <Onboarding onJoined={handleOnboarded} />;
+    return (
+      <AgencyThemeProvider shiftPattern={session?.shiftPattern}>
+        <Onboarding onJoined={handleOnboarded} />
+      </AgencyThemeProvider>
+    );
   }
 
   if (!unlocked) {
     return (
-      <LockScreen
-        onUnlocked={handleUnlocked}
-        expectedPassword={lockPassword}
-        passwordVersion={passwordVersion}
-        loadingLock={loadingLock}
-      />
+      <AgencyThemeProvider agency={sessionAgency} shiftPattern={session.shiftPattern}>
+        <LockScreen
+          onUnlocked={handleUnlocked}
+          expectedPassword={lockPassword}
+          passwordVersion={passwordVersion}
+          loadingLock={loadingLock}
+        />
+      </AgencyThemeProvider>
     );
   }
 
   if (!displayName) {
-    return <NicknameSetup onDone={handleNicknameDone} />;
+    return (
+      <AgencyThemeProvider agency={sessionAgency} shiftPattern={session.shiftPattern}>
+        <NicknameSetup onDone={handleNicknameDone} />
+      </AgencyThemeProvider>
+    );
   }
 
   if (showSplash) {
-    return <SplashScreen onDone={finishSplash} />;
+    return (
+      <AgencyThemeProvider agency={sessionAgency} shiftPattern={session.shiftPattern}>
+        <SplashScreen agency={sessionAgency} onDone={finishSplash} />
+      </AgencyThemeProvider>
+    );
   }
 
   return (
-    <MonthCalendar
+    <AgencyThemeProvider agency={sessionAgency} shiftPattern={session.shiftPattern}>
+      <MonthCalendar
       calendarId={session.calendarId}
       calendarName={session.calendarName}
       shareCode={session.shareCode}
@@ -313,5 +348,6 @@ export default function HomePage() {
         )
       }
     />
+    </AgencyThemeProvider>
   );
 }

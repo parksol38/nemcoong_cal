@@ -6,7 +6,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
  */
 const config: CapacitorConfig = {
   appId: "com.nemkung.shiftcalendar",
-  appName: "넴쿵 교대근무표",
+  appName: "오늘도 출동",
   webDir: "www",
   server: {
     url: "https://shift-calendar-three.vercel.app",

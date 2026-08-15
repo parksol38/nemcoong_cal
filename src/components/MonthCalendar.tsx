@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -50,8 +50,14 @@ import { MonthHoursModal, type HoursBucket } from "./MonthHoursModal";
 import { MonthPicker } from "./MonthPicker";
 import { RecentChanges } from "./RecentChanges";
 import { SettingsModal } from "./SettingsModal";
-import { SharedMessageBoard } from "./SharedMessageBoard";
+import { MessageSendModal } from "./MessageSendModal";
+import { MessageDeliveryOverlay } from "./MessageDeliveryOverlay";
 import { ShiftModal } from "./ShiftModal";
+import {
+  getMessageDeliveryKey,
+  markMessageDismissed,
+  shouldShowMessageDelivery,
+} from "@/lib/messageDelivery";
 
 interface MonthCalendarProps {
   calendarId: string;
@@ -87,7 +93,7 @@ export function MonthCalendar({
   onShiftPatternChange,
 }: MonthCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [noticeDate, setNoticeDate] = useState<Date | null>(null);
@@ -96,6 +102,8 @@ export function MonthCalendar({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
   const [hoursModalOpen, setHoursModalOpen] = useState(false);
+  const [messageSendOpen, setMessageSendOpen] = useState(false);
+  const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [showHours, setShowHours] = useState(true);
   const [showPay, setShowPay] = useState(true);
   const [hourlyRates, setHourlyRates] = useState<HourlyRates>(() => ({
@@ -162,6 +170,29 @@ export function MonthCalendar({
     error: messageError,
     postMessage,
   } = useSharedMessage(calendarId);
+
+  // 상대 메시지 수신 시 말풍선 표시 (닫으면 로컬에서만 사라짐)
+  useEffect(() => {
+    if (messageLoading || messageSendOpen) return;
+    if (
+      !shouldShowMessageDelivery({
+        calendarId,
+        message: sharedMessage,
+        displayName,
+      })
+    ) {
+      setDeliveryOpen(false);
+      return;
+    }
+    setDeliveryOpen(true);
+  }, [calendarId, displayName, messageLoading, messageSendOpen, sharedMessage]);
+
+  const handleDismissDelivery = useCallback(() => {
+    if (sharedMessage) {
+      markMessageDismissed(calendarId, getMessageDeliveryKey(sharedMessage));
+    }
+    setDeliveryOpen(false);
+  }, [calendarId, sharedMessage]);
 
   // 이 기기를 접속 이력에 등록·갱신
   useEffect(() => {
@@ -322,6 +353,8 @@ export function MonthCalendar({
     startTime?: string | null;
     endTime?: string | null;
     extraHours?: number | null;
+    extraBeforeHours?: number | null;
+    extraAfterHours?: number | null;
   }) => {
     if (!selectedDate) return;
     setSaving(true);
@@ -337,6 +370,8 @@ export function MonthCalendar({
         startTime: data.startTime,
         endTime: data.endTime,
         extraHours: data.extraHours,
+        extraBeforeHours: data.extraBeforeHours,
+        extraAfterHours: data.extraAfterHours,
       });
       await recordSingleChange({
         date: dateKey,
@@ -447,12 +482,6 @@ export function MonthCalendar({
     [setStripX],
   );
 
-  const goToday = () => {
-    if (modalOpen || animLock.current) return;
-    setStripX(0, false);
-    setCurrentMonth(startOfMonth(new Date()));
-  };
-
   const jumpToMonth = (month: Date) => {
     if (modalOpen || animLock.current) return;
     setStripX(0, false);
@@ -543,9 +572,9 @@ export function MonthCalendar({
       <CalendarHeader
         currentMonth={currentMonth}
         calendarName={calendarName}
-        onToday={goToday}
         onOpenMonthPicker={() => setMonthPickerOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
+        onSendMessage={() => setMessageSendOpen(true)}
       />
 
       <main className="mx-auto max-w-3xl px-3 pb-28 pt-3 sm:px-4">
@@ -558,7 +587,7 @@ export function MonthCalendar({
           className="mb-3 w-full rounded-2xl bg-white/80 px-3.5 py-3 text-left shadow-sm transition active:scale-[0.99] dark:bg-[#161B22]/90 dark:shadow-black/20"
         >
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#007AFF]/10 text-[#007AFF]">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent">
               <Clock3 className="h-4 w-4" />
             </div>
             <div className="min-w-0 shrink-0">
@@ -636,6 +665,7 @@ export function MonthCalendar({
               days={prevDays}
               month={prevMonth}
               shiftMap={shiftMap}
+              selectedDate={selectedDate}
               changeCountByDate={changeCountByDate}
               showHours={showHours}
               shiftColors={shiftColors}
@@ -647,6 +677,7 @@ export function MonthCalendar({
               days={currentDays}
               month={currentMonth}
               shiftMap={shiftMap}
+              selectedDate={selectedDate}
               changeCountByDate={changeCountByDate}
               showHours={showHours}
               shiftColors={shiftColors}
@@ -658,6 +689,7 @@ export function MonthCalendar({
               days={nextDays}
               month={nextMonth}
               shiftMap={shiftMap}
+              selectedDate={selectedDate}
               changeCountByDate={changeCountByDate}
               showHours={showHours}
               shiftColors={shiftColors}
@@ -686,15 +718,6 @@ export function MonthCalendar({
           ))}
         </div>
 
-        <SharedMessageBoard
-          message={sharedMessage}
-          loading={messageLoading}
-          saving={messageSaving}
-          error={messageError}
-          displayName={displayName}
-          onPost={(body) => postMessage(body, displayName)}
-        />
-
         <RecentChanges
           logs={recentLogs}
           setupError={setupError}
@@ -707,6 +730,23 @@ export function MonthCalendar({
           }}
         />
       </main>
+
+      <MessageSendModal
+        open={messageSendOpen}
+        saving={messageSaving}
+        error={messageError}
+        displayName={displayName}
+        onClose={() => setMessageSendOpen(false)}
+        onSend={(body, photo) => postMessage(body, displayName, photo)}
+      />
+
+      {sharedMessage ? (
+        <MessageDeliveryOverlay
+          open={deliveryOpen}
+          message={sharedMessage}
+          onDismiss={handleDismissDelivery}
+        />
+      ) : null}
 
       <ShiftModal
         open={modalOpen}
@@ -749,6 +789,8 @@ export function MonthCalendar({
         onHourlyRatesChange={setHourlyRates}
         shiftColors={shiftColors}
         onShiftColorsChange={setShiftColors}
+        displayName={displayName}
+        onTestSessionSwitch={() => window.location.reload()}
         onClose={() => setSettingsOpen(false)}
       />
 
@@ -778,6 +820,7 @@ const MonthGrid = function MonthGrid({
   days,
   month,
   shiftMap,
+  selectedDate,
   changeCountByDate,
   showHours,
   shiftColors,
@@ -787,12 +830,14 @@ const MonthGrid = function MonthGrid({
   days: Date[];
   month: Date;
   shiftMap: Map<string, Shift>;
+  selectedDate: Date;
   changeCountByDate: Map<string, number>;
   showHours: boolean;
   shiftColors: ShiftColors;
   onClick: (date: Date) => void;
   onChangeBadgeClick: (date: Date) => void;
 }) {
+  const selectedKey = format(selectedDate, "yyyy-MM-dd");
   return (
     <div
       className="grid h-[calc(6*68px+5*0.25rem)] w-1/3 shrink-0 grid-cols-7 grid-rows-6 gap-1 sm:h-[calc(6*88px+5*0.375rem)] sm:gap-1.5"
@@ -805,6 +850,7 @@ const MonthGrid = function MonthGrid({
             date={day}
             currentMonth={month}
             shift={shiftMap.get(key)}
+            selected={key === selectedKey}
             changeCount={changeCountByDate.get(key) ?? 0}
             showHours={showHours}
             shiftColors={shiftColors}

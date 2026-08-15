@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, type ReactNode } from "react";
 import { format } from "date-fns";
@@ -8,10 +8,8 @@ import {
   Copy,
   Eye,
   EyeOff,
-  History,
   IdCard,
   KeyRound,
-  MessageCircleHeart,
   MonitorSmartphone,
   Moon,
   Settings2,
@@ -24,11 +22,17 @@ import {
 } from "lucide-react";
 import {
   fetchCalendarDevices,
-  fetchMessageHistory,
   removeCalendarDevice,
   updateCalendarPassword,
 } from "@/lib/api";
 import { useTheme } from "@/components/ThemeProvider";
+import {
+  formatDesignVersionLabel,
+  formatReleaseVersionLabel,
+} from "@/lib/appVersion";
+import { storeAgencyTheme } from "@/lib/agencyTheme";
+import { useAgencyTheme } from "@/components/AgencyThemeProvider";
+import { TestSessionSwitcher } from "@/components/TestSessionSwitcher";
 import { getShiftPattern } from "@/lib/shiftPatterns";
 import {
   applySalaryProfileRates,
@@ -54,7 +58,6 @@ import {
   unlockDevice,
   type AppTheme,
   type CalendarDevice,
-  type CalendarMessage,
   type HourlyRates,
   type SalaryAgency,
   type SalaryProfile,
@@ -69,6 +72,7 @@ interface SettingsModalProps {
   shareCode: string;
   calendarName: string;
   shiftPattern: string;
+  displayName: string;
   ownerDeviceId: string | null;
   appPassword: string;
   passwordVersion: number;
@@ -77,6 +81,7 @@ interface SettingsModalProps {
     password_version: number;
   }) => void;
   onSessionInvalid: () => void;
+  onTestSessionSwitch: () => void;
   onClose: () => void;
   showHours: boolean;
   onShowHoursChange: (show: boolean) => void;
@@ -88,7 +93,7 @@ interface SettingsModalProps {
   onShiftColorsChange: (colors: ShiftColors) => void;
 }
 
-type Tab = "prefs" | "devices" | "messages";
+type Tab = "prefs" | "devices";
 
 /** 시급 입력 표시용 천 단위 콤마 (예: 1,000) */
 function formatRateInput(value: number | string): string {
@@ -110,11 +115,13 @@ export function SettingsModal({
   shareCode,
   calendarName,
   shiftPattern,
+  displayName,
   ownerDeviceId,
   appPassword,
   passwordVersion,
   onPasswordChanged,
   onSessionInvalid: _onSessionInvalid,
+  onTestSessionSwitch,
   onClose,
   showHours,
   onShowHoursChange,
@@ -127,7 +134,6 @@ export function SettingsModal({
 }: SettingsModalProps) {
   const [tab, setTab] = useState<Tab>("prefs");
   const [devices, setDevices] = useState<CalendarDevice[]>([]);
-  const [messages, setMessages] = useState<CalendarMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rateDraft, setRateDraft] = useState({
@@ -143,6 +149,7 @@ export function SettingsModal({
     Boolean(myDeviceId) &&
     (ownerDeviceId === myDeviceId || !ownerDeviceId);
   const pattern = getShiftPattern(shiftPattern);
+  const { agency } = useAgencyTheme();
   const { theme, resolvedTheme, setTheme, schedule, setSchedule } = useTheme();
   const [editingColorKey, setEditingColorKey] = useState<ShiftColorKey | null>(
     null,
@@ -170,37 +177,22 @@ export function SettingsModal({
   }, [open, hourlyRates, appPassword]);
 
   useEffect(() => {
-    if (!open || tab === "prefs") return;
+    if (!open || tab !== "devices") return;
 
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    const load =
-      tab === "devices"
-        ? fetchCalendarDevices(calendarId).then((list) => {
-            if (!cancelled) {
-              setDevices(list);
-              setMessages([]);
-            }
-          })
-        : fetchMessageHistory(calendarId, 40).then((list) => {
-            if (!cancelled) {
-              setMessages(list);
-              setDevices([]);
-            }
-          });
-
-    load
+    fetchCalendarDevices(calendarId)
+      .then((list) => {
+        if (!cancelled) setDevices(list);
+      })
       .catch(() => {
         if (!cancelled) {
           setError(
-            tab === "devices"
-              ? "접속 이력을 불러오지 못했어요. migrate-calendar-devices.sql 실행이 필요할 수 있어요."
-              : "메시지 이력을 불러오지 못했어요. migrate-calendar-messages.sql 실행이 필요할 수 있어요.",
+            "접속 이력을 불러오지 못했어요. migrate-calendar-devices.sql 실행이 필요할 수 있어요.",
           );
           setDevices([]);
-          setMessages([]);
         }
       })
       .finally(() => {
@@ -246,6 +238,7 @@ export function SettingsModal({
 
   const handleAgencyChange = (agency: SalaryAgency) => {
     applyProfileRates({ ...salaryProfile, agency });
+    storeAgencyTheme(agency);
   };
 
   const handleRankChange = (rankId: SalaryRankId) => {
@@ -376,20 +369,14 @@ export function SettingsModal({
             icon={<Users className="h-3.5 w-3.5" />}
             label="접속한 사람"
           />
-          <TabButton
-            active={tab === "messages"}
-            onClick={() => setTab("messages")}
-            icon={<MessageCircleHeart className="h-3.5 w-3.5" />}
-            label="메시지 이력"
-          />
         </div>
 
         <div className="max-h-[55vh] space-y-2.5 overflow-y-auto px-5 py-4">
           {tab === "prefs" ? (
             <div className="space-y-3">
-              <div className="rounded-2xl border-2 border-[#007AFF]/30 bg-[#007AFF]/5 px-3 py-3 dark:border-[#007AFF]/40 dark:bg-[#007AFF]/10">
+              <div className="rounded-2xl border-2 border-accent/30 bg-accent/5 px-3 py-3 dark:border-accent/40 dark:bg-accent/10">
                 <div className="mb-2.5 flex items-center gap-2.5">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#007AFF]/15 text-[#007AFF]">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
                     <IdCard className="h-3.5 w-3.5" />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -422,7 +409,7 @@ export function SettingsModal({
                             onClick={() => handleAgencyChange(opt.id)}
                             className={`rounded-lg border px-2 py-1.5 text-[12px] font-semibold transition active:scale-[0.98] ${
                               selected
-                                ? "border-[#007AFF] bg-[#007AFF]/10 text-[#007AFF]"
+                                ? "border-accent bg-accent/10 text-accent"
                                 : "border-gray-200 bg-white text-gray-700 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-200"
                             }`}
                           >
@@ -443,7 +430,7 @@ export function SettingsModal({
                         onChange={(e) =>
                           handleRankChange(e.target.value as SalaryRankId)
                         }
-                        className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[12px] outline-none focus:border-[#007AFF] focus:ring-1 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
+                        className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[12px] outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
                       >
                         {SALARY_RANKS.map((rank) => (
                           <option key={rank.id} value={rank.id}>
@@ -461,7 +448,7 @@ export function SettingsModal({
                         onChange={(e) =>
                           handleGradeChange(Number(e.target.value))
                         }
-                        className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[12px] outline-none focus:border-[#007AFF] focus:ring-1 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
+                        className="w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[12px] outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
                       >
                         {gradeOptions.map((g) => (
                           <option key={g} value={g}>
@@ -499,14 +486,14 @@ export function SettingsModal({
                 <div className="mt-3 flex items-center gap-2">
                   <div className="min-w-0 flex-1 rounded-xl bg-white px-3 py-2 dark:bg-[#0B0F14]">
                     <p className="text-[10px] text-gray-400">공유 코드</p>
-                    <p className="font-mono text-lg font-bold tracking-[0.2em] text-[#007AFF]">
+                    <p className="font-mono text-lg font-bold tracking-[0.2em] text-accent">
                       {shareCode}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => void copyShareCode()}
-                    className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-[#007AFF]/10 px-3 text-xs font-semibold text-[#007AFF] transition active:scale-95"
+                    className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-accent/10 px-3 text-xs font-semibold text-accent transition active:scale-95"
                   >
                     <Copy className="h-3.5 w-3.5" />
                     {copiedCode ? "복사됨" : "복사"}
@@ -517,11 +504,11 @@ export function SettingsModal({
               {isOwner ? (
                 <div className="rounded-2xl border border-gray-100 bg-gray-50/80 px-3.5 py-3.5 dark:border-white/10 dark:bg-white/5">
                   <div className="mb-2 flex items-center gap-2">
-                    <KeyRound className="h-4 w-4 text-[#007AFF]" />
+                    <KeyRound className="h-4 w-4 text-accent" />
                     <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                       잠금 비밀번호
                     </p>
-                    <span className="rounded-full bg-[#007AFF]/10 px-2 py-0.5 text-[10px] font-semibold text-[#007AFF]">
+                    <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent">
                       소유자
                     </span>
                   </div>
@@ -531,7 +518,7 @@ export function SettingsModal({
                         type={showPassword ? "text" : "password"}
                         value={passwordDraft}
                         onChange={(e) => setPasswordDraft(e.target.value)}
-                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm outline-none focus:border-[#007AFF] dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
+                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm outline-none focus:border-accent dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
                       />
                       <button
                         type="button"
@@ -550,7 +537,7 @@ export function SettingsModal({
                       type="button"
                       disabled={passwordSaving}
                       onClick={() => void savePassword()}
-                      className="shrink-0 rounded-xl bg-[#007AFF] px-3 text-xs font-semibold text-white transition active:scale-95 disabled:opacity-60"
+                      className="shrink-0 rounded-xl bg-accent px-3 text-xs font-semibold text-white transition active:scale-95 disabled:opacity-60"
                     >
                       {passwordSaving ? "저장…" : "변경"}
                     </button>
@@ -569,7 +556,7 @@ export function SettingsModal({
 
               <div className="rounded-2xl border border-gray-100 bg-gray-50/80 px-3.5 py-3.5 dark:border-white/10 dark:bg-white/5">
                 <div className="mb-3 flex items-center gap-2">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#007AFF]/15 text-[#007AFF]">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
                     {resolvedTheme === "dark" ? (
                       <Moon className="h-4 w-4" />
                     ) : (
@@ -617,15 +604,15 @@ export function SettingsModal({
                         onClick={() => setTheme(opt.id)}
                         className={`rounded-2xl border-2 px-2.5 py-3 text-left transition active:scale-[0.98] ${
                           selected
-                            ? "border-[#007AFF] bg-[#007AFF]/10 dark:bg-[#007AFF]/15"
+                            ? "border-accent bg-accent/10 dark:bg-accent/15"
                             : "border-gray-200 bg-white dark:border-white/10 dark:bg-[#0B0F14]"
                         }`}
                       >
                         <Icon
-                          className={`mb-1.5 h-4 w-4 ${selected ? "text-[#007AFF]" : "text-gray-400"}`}
+                          className={`mb-1.5 h-4 w-4 ${selected ? "text-accent" : "text-gray-400"}`}
                         />
                         <p
-                          className={`text-sm font-bold ${selected ? "text-[#007AFF]" : "text-gray-800 dark:text-gray-200"}`}
+                          className={`text-sm font-bold ${selected ? "text-accent" : "text-gray-800 dark:text-gray-200"}`}
                         >
                           {opt.label}
                         </p>
@@ -640,8 +627,9 @@ export function SettingsModal({
                     <p className="mb-2 text-[11px] font-semibold text-gray-700 dark:text-gray-200">
                       밝게 둘 시간
                     </p>
-                    <div className="flex items-center gap-2">
-                      <label className="min-w-0 flex-1">
+                    {/* time 입력은 가로가 넓어 나란히 두면 잘리므로 세로 배치 */}
+                    <div className="flex flex-col gap-2">
+                      <label className="block min-w-0">
                         <span className="mb-1 block text-[10px] text-gray-400">
                           시작
                         </span>
@@ -654,13 +642,10 @@ export function SettingsModal({
                               lightStart: e.target.value || schedule.lightStart,
                             })
                           }
-                          className="w-full rounded-xl border border-gray-200 bg-gray-50 px-2.5 py-2 text-sm outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-white/5 dark:text-gray-100"
+                          className="box-border w-full min-w-0 max-w-full rounded-xl border border-gray-200 bg-gray-50 px-2.5 py-2 text-[15px] tabular-nums outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/10 dark:bg-white/5 dark:text-gray-100 [&::-webkit-datetime-edit]:min-w-0 [&::-webkit-datetime-edit]:p-0"
                         />
                       </label>
-                      <span className="mt-4 shrink-0 text-xs text-gray-400">
-                        ~
-                      </span>
-                      <label className="min-w-0 flex-1">
+                      <label className="block min-w-0">
                         <span className="mb-1 block text-[10px] text-gray-400">
                           끝
                         </span>
@@ -673,7 +658,7 @@ export function SettingsModal({
                               lightEnd: e.target.value || schedule.lightEnd,
                             })
                           }
-                          className="w-full rounded-xl border border-gray-200 bg-gray-50 px-2.5 py-2 text-sm outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-white/5 dark:text-gray-100"
+                          className="box-border w-full min-w-0 max-w-full rounded-xl border border-gray-200 bg-gray-50 px-2.5 py-2 text-[15px] tabular-nums outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/10 dark:bg-white/5 dark:text-gray-100 [&::-webkit-datetime-edit]:min-w-0 [&::-webkit-datetime-edit]:p-0"
                         />
                       </label>
                     </div>
@@ -692,7 +677,7 @@ export function SettingsModal({
                   <button
                     type="button"
                     onClick={resetColors}
-                    className="text-[10px] font-semibold text-[#007AFF] transition active:opacity-70"
+                    className="text-[10px] font-semibold text-accent transition active:opacity-70"
                   >
                     기본색
                   </button>
@@ -711,7 +696,7 @@ export function SettingsModal({
                         }
                         className={`flex flex-col items-center gap-1 rounded-xl p-1 transition active:scale-[0.97] ${
                           selected
-                            ? "bg-[#007AFF]/10 ring-2 ring-[#007AFF]"
+                            ? "bg-accent/10 ring-2 ring-accent"
                             : "hover:bg-black/5 dark:hover:bg-white/5"
                         }`}
                         aria-label={`${SHIFT_CELL_LABELS[key]} 색상 고르기`}
@@ -747,7 +732,7 @@ export function SettingsModal({
                             aria-pressed={active}
                             className={`aspect-square rounded-lg border transition active:scale-95 ${
                               active
-                                ? "border-[#007AFF] ring-2 ring-[#007AFF] ring-offset-1 dark:ring-offset-[#0B0F14]"
+                                ? "border-accent ring-2 ring-accent ring-offset-1 dark:ring-offset-[#0B0F14]"
                                 : "border-black/10 dark:border-white/15"
                             }`}
                             style={{ backgroundColor: hex }}
@@ -767,7 +752,7 @@ export function SettingsModal({
 
               <div className="rounded-2xl border border-gray-100 bg-gray-50/80 px-3 py-3 dark:border-white/10 dark:bg-white/5">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#007AFF]/15 text-[#007AFF]">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
                     <Wallet className="h-3.5 w-3.5" />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -785,7 +770,7 @@ export function SettingsModal({
                     aria-label="예상 월급 보기"
                     onClick={() => handleTogglePay(!showPay)}
                     className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
-                      showPay ? "bg-[#007AFF]" : "bg-gray-300 dark:bg-white/20"
+                      showPay ? "bg-accent" : "bg-gray-300 dark:bg-white/20"
                     }`}
                   >
                     <span
@@ -805,7 +790,7 @@ export function SettingsModal({
                       <button
                         type="button"
                         onClick={resetRates}
-                        className="text-[10px] font-semibold text-[#007AFF] transition active:opacity-70"
+                        className="text-[10px] font-semibold text-accent transition active:opacity-70"
                       >
                         봉급표로 다시 맞추기
                       </button>
@@ -839,7 +824,7 @@ export function SettingsModal({
                             onBlur={() =>
                               commitRate(row.key, rateDraft[row.key])
                             }
-                            className="w-full rounded-lg border border-gray-200 bg-white px-1.5 py-1.5 text-center text-[12px] tabular-nums outline-none focus:border-[#007AFF] focus:ring-1 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
+                            className="w-full rounded-lg border border-gray-200 bg-white px-1.5 py-1.5 text-center text-[12px] tabular-nums outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
                           />
                         </label>
                       ))}
@@ -850,7 +835,7 @@ export function SettingsModal({
 
               <div className="rounded-2xl border border-gray-100 bg-gray-50/80 px-3.5 py-3.5 dark:border-white/10 dark:bg-white/5">
                 <div className="flex items-start gap-3">
-                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#007AFF]/15 text-[#007AFF]">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
                     <Clock3 className="h-4 w-4" />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -870,7 +855,7 @@ export function SettingsModal({
                         aria-label="근무시간 보기"
                         onClick={() => handleToggleHours(!showHours)}
                         className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
-                          showHours ? "bg-[#007AFF]" : "bg-gray-300 dark:bg-white/20"
+                          showHours ? "bg-accent" : "bg-gray-300 dark:bg-white/20"
                         }`}
                       >
                         <span
@@ -883,6 +868,19 @@ export function SettingsModal({
                   </div>
                 </div>
               </div>
+
+              <TestSessionSwitcher
+                displayName={displayName}
+                calendarId={calendarId}
+                shareCode={shareCode}
+                calendarName={calendarName}
+                shiftPattern={shiftPattern}
+                agency={agency}
+                ownerDeviceId={ownerDeviceId}
+                passwordVersion={passwordVersion}
+                onSwitched={onTestSessionSwitch}
+              />
+
               <p className="px-1 text-[11px] leading-relaxed text-gray-400">
                 설정은 이 기기에만 저장됩니다. 위쪽 월 총 근무시간은 항상
                 표시됩니다.
@@ -890,19 +888,28 @@ export function SettingsModal({
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 pt-1 text-[11px]">
                 <a
                   href="/privacy"
-                  className="font-semibold text-[#007AFF] underline-offset-2 hover:underline"
+                  className="font-semibold text-accent underline-offset-2 hover:underline"
                 >
                   개인정보처리방침
                 </a>
                 <span className="text-gray-300 dark:text-white/20">·</span>
                 <a
                   href="/terms"
-                  className="font-semibold text-[#007AFF] underline-offset-2 hover:underline"
+                  className="font-semibold text-accent underline-offset-2 hover:underline"
                 >
                   이용약관
                 </a>
                 <span className="text-gray-300 dark:text-white/20">·</span>
-                <span className="text-gray-400">v1.0.0</span>
+                <a
+                  href="/data-deletion"
+                  className="font-semibold text-accent underline-offset-2 hover:underline"
+                >
+                  데이터 삭제
+                </a>
+                <span className="text-gray-300 dark:text-white/20">·</span>
+                <span className="text-gray-400">
+                  {formatDesignVersionLabel()} · {formatReleaseVersionLabel()}
+                </span>
               </div>
             </div>
           ) : loading ? (
@@ -928,7 +935,7 @@ export function SettingsModal({
                     key={device.id}
                     className={`rounded-2xl border px-3.5 py-3 ${
                       isMe
-                        ? "border-[#007AFF]/25 bg-[#007AFF]/5"
+                        ? "border-accent/25 bg-accent/5"
                         : "border-gray-100 bg-gray-50/80 dark:border-white/10 dark:bg-white/5"
                     }`}
                   >
@@ -936,7 +943,7 @@ export function SettingsModal({
                       <div
                         className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
                           isMe
-                            ? "bg-[#007AFF]/15 text-[#007AFF]"
+                            ? "bg-accent/15 text-accent"
                             : "bg-white text-gray-500 shadow-sm dark:bg-white/10 dark:text-gray-300 dark:shadow-none"
                         }`}
                       >
@@ -948,7 +955,7 @@ export function SettingsModal({
                             {device.display_name || "이름 없음"}
                           </p>
                           {isMe ? (
-                            <span className="shrink-0 rounded-full bg-[#007AFF]/10 px-1.5 py-0.5 text-[10px] font-semibold text-[#007AFF]">
+                            <span className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
                               나
                             </span>
                           ) : null}
@@ -994,40 +1001,7 @@ export function SettingsModal({
                 );
               })
             )
-          ) : messages.length === 0 ? (
-            <p className="py-8 text-center text-sm text-gray-400">
-              아직 남긴 메시지가 없어요.
-            </p>
-          ) : (
-            messages.map((msg, i) => (
-              <div
-                key={msg.id}
-                className="rounded-2xl border border-gray-100 bg-gray-50/80 px-3.5 py-3 dark:border-white/10 dark:bg-white/5"
-              >
-                <div className="mb-1.5 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5">
-                    <History className="h-3 w-3 text-gray-400" />
-                    <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">
-                      {msg.updated_by || "누군가"}
-                    </p>
-                    {i === 0 ? (
-                      <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-500">
-                        현재
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="shrink-0 text-[10px] text-gray-400">
-                    {format(new Date(msg.created_at), "yyyy.M.d HH:mm", {
-                      locale: ko,
-                    })}
-                  </p>
-                </div>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800 dark:text-gray-100">
-                  {msg.body}
-                </p>
-              </div>
-            ))
-          )}
+          ) : null}
         </div>
 
         <div className="border-t border-gray-100 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-white/10">
@@ -1061,7 +1035,7 @@ function TabButton({
       onClick={onClick}
       className={`mb-[-1px] flex flex-1 items-center justify-center gap-1 border-b-2 px-1 py-2.5 text-[11px] font-semibold transition sm:gap-1.5 sm:px-2 sm:text-xs ${
         active
-          ? "border-[#007AFF] text-[#007AFF]"
+          ? "border-accent text-accent"
           : "border-transparent text-gray-400"
       }`}
     >

@@ -1,6 +1,8 @@
 import type { SalaryRankId } from "./salaryTable";
 import {
   SHIFT_DEFAULT_TIMES,
+  getShiftExtraAfterHours,
+  getShiftExtraBeforeHours,
   getShiftExtraHours,
   type Shift,
   type ShiftType,
@@ -87,6 +89,27 @@ function parseHHMMToMinutes(value: string): number | null {
   return h! * 60 + m!;
 }
 
+/** 분 → HH:mm (음수·24시 넘김 허용) */
+function minutesToHHMM(totalMins: number): string {
+  const day = 24 * 60;
+  const m = ((Math.round(totalMins) % day) + day) % day;
+  const h = Math.floor(m / 60);
+  const min = m % 60;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+function addHoursToHHMM(hhmm: string, hours: number): string | null {
+  const start = parseHHMMToMinutes(hhmm);
+  if (start == null) return null;
+  return minutesToHHMM(start + hours * 60);
+}
+
+function subtractHoursFromHHMM(hhmm: string, hours: number): string | null {
+  const end = parseHHMMToMinutes(hhmm);
+  if (end == null) return null;
+  return minutesToHHMM(end - hours * 60);
+}
+
 /**
  * 근무 구간이 야간수당 시간대(22:00~06:00)와 겹치는 시간(시간).
  * 예: 18:00~08:00 → 8시간 / 22:00~04:00 → 6시간 / 08:00~18:00 → 0
@@ -125,17 +148,43 @@ function resolveShiftTimes(shift: Shift): { start: string; end: string } | null 
   return { start: defaults.start, end: defaults.end };
 }
 
-/** 한 근무에서 야간수당 대상 시간 */
+/**
+ * 추가시간 배치(시작 전/종료 후)가 22:00~06:00과 겹치는 야간 시간.
+ * 예: 심야 22~04에 종료 후 +5 → 04~09 중 04~06 = 2시간
+ */
+export function nightHoursFromExtraPlacement(shift: Shift): number {
+  const before = getShiftExtraBeforeHours(shift);
+  const after = getShiftExtraAfterHours(shift);
+  if (before <= 0 && after <= 0) return 0;
+
+  const times = resolveShiftTimes(shift);
+  if (!times) return 0;
+
+  let night = 0;
+  if (before > 0) {
+    const start = subtractHoursFromHHMM(times.start, before);
+    if (start) night += calcNightAllowanceHours(start, times.start);
+  }
+  if (after > 0) {
+    const end = addHoursToHHMM(times.end, after);
+    if (end) night += calcNightAllowanceHours(times.end, end);
+  }
+  return Math.round(night * 10) / 10;
+}
+
+/** 한 근무에서 야간수당 대상 시간 (본근무 + 추가시간 배치) */
 export function nightHoursForShift(shift: Shift): number {
+  let base = 0;
   const times = resolveShiftTimes(shift);
   if (times) {
-    const hours = calcNightAllowanceHours(times.start, times.end);
-    if (hours > 0) return hours;
+    base = calcNightAllowanceHours(times.start, times.end);
+  } else if (shift.shift_type === "overnight") {
+    // 시간 파싱 실패 시 야간·심야·야간자원은 기본 야간창으로 보수적 추정
+    base = 6;
+  } else if (NIGHT_SHIFT_TYPES.has(shift.shift_type)) {
+    base = 8;
   }
-  // 시간 파싱 실패 시 야간·심야·야간자원은 기본 야간창으로 보수적 추정
-  if (shift.shift_type === "overnight") return 6;
-  if (NIGHT_SHIFT_TYPES.has(shift.shift_type)) return 8;
-  return 0;
+  return Math.round((base + nightHoursFromExtraPlacement(shift)) * 10) / 10;
 }
 
 /** 달력에 입력된 근무로 시간외·야간·휴일 수량 집계 */

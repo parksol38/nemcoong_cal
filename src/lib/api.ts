@@ -5,6 +5,11 @@ import {
   type ShiftPatternId,
 } from "./shiftPatterns";
 import {
+  inferAgencyFromPattern,
+  isAgencyTheme,
+  type AgencyTheme,
+} from "./agencyTheme";
+import {
   detectDeviceLabel,
   generateShareCode,
   getOrCreateDeviceId,
@@ -21,6 +26,7 @@ export async function createCalendar(
   name: string,
   options?: {
     shiftPattern?: ShiftPatternId | string;
+    agency?: AgencyTheme;
     appPassword?: string;
     ownerDeviceId?: string | null;
   },
@@ -32,6 +38,9 @@ export async function createCalendar(
   const password = (options?.appPassword ?? "").trim() || fallback;
   const owner =
     options?.ownerDeviceId?.trim() || getOrCreateDeviceId() || null;
+  const agency = isAgencyTheme(options?.agency)
+    ? options.agency
+    : inferAgencyFromPattern(options?.shiftPattern);
 
   const { data, error } = await supabase
     .from("calendars")
@@ -41,6 +50,7 @@ export async function createCalendar(
       app_password: password,
       password_version: 1,
       shift_pattern: resolveShiftPatternId(options?.shiftPattern),
+      agency,
       owner_device_id: owner,
     })
     .select()
@@ -273,10 +283,37 @@ export async function upsertShift(input: {
   startTime?: string | null;
   endTime?: string | null;
   extraHours?: number | null;
+  extraBeforeHours?: number | null;
+  extraAfterHours?: number | null;
 }): Promise<Shift> {
   const supabase = getSupabase();
 
   const extra = Number(input.extraHours);
+  const extraHours =
+    Number.isFinite(extra) && extra > 0 ? Math.round(extra * 10) / 10 : 0;
+  const beforeRaw = Number(input.extraBeforeHours);
+  const afterRaw = Number(input.extraAfterHours);
+  let extraBefore =
+    Number.isFinite(beforeRaw) && beforeRaw > 0
+      ? Math.round(beforeRaw * 10) / 10
+      : 0;
+  let extraAfter =
+    Number.isFinite(afterRaw) && afterRaw > 0
+      ? Math.round(afterRaw * 10) / 10
+      : 0;
+  if (extraHours <= 0) {
+    extraBefore = 0;
+    extraAfter = 0;
+  } else {
+    // 합이 총 추가시간을 넘지 않게 보정
+    const sum = Math.round((extraBefore + extraAfter) * 10) / 10;
+    if (sum > extraHours) {
+      const scale = extraHours / sum;
+      extraBefore = Math.round(extraBefore * scale * 10) / 10;
+      extraAfter = Math.round((extraHours - extraBefore) * 10) / 10;
+    }
+  }
+
   const payload = {
     calendar_id: input.calendarId,
     date: input.date,
@@ -285,8 +322,9 @@ export async function upsertShift(input: {
     updated_by: input.updatedBy.trim(),
     start_time: input.startTime ?? null,
     end_time: input.endTime ?? null,
-    extra_hours:
-      Number.isFinite(extra) && extra > 0 ? Math.round(extra * 10) / 10 : 0,
+    extra_hours: extraHours,
+    extra_before_hours: extraBefore,
+    extra_after_hours: extraAfter,
   };
 
   if (input.existingId) {
@@ -297,10 +335,12 @@ export async function upsertShift(input: {
       .select("*")
       .single();
     if (error) throw error;
-    // 서버 응답에 extra_hours가 빠져도 방금 저장한 값을 유지
+    // 서버 응답에 필드가 빠져도 방금 저장한 값을 유지
     return {
       ...(data as Shift),
       extra_hours: payload.extra_hours,
+      extra_before_hours: payload.extra_before_hours,
+      extra_after_hours: payload.extra_after_hours,
       start_time: payload.start_time,
       end_time: payload.end_time,
     };
@@ -316,6 +356,8 @@ export async function upsertShift(input: {
   return {
     ...(data as Shift),
     extra_hours: payload.extra_hours,
+    extra_before_hours: payload.extra_before_hours,
+    extra_after_hours: payload.extra_after_hours,
     start_time: payload.start_time,
     end_time: payload.end_time,
   };
@@ -349,6 +391,8 @@ export async function upsertShiftsBulk(input: {
       start_time: null,
       end_time: null,
       extra_hours: 0,
+      extra_before_hours: 0,
+      extra_after_hours: 0,
     }));
 
     const { data, error } = await supabase
@@ -463,6 +507,71 @@ export function buildPatternChangeSummary(input: {
   return `${who}님이 ${daysLabel} 패턴으로 다시 입력 (시작: ${SHIFT_LABELS[input.startType]})`;
 }
 
+function normalizeDeviceDisplayName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+/** 같은 사람·같은 기기 종류로 중복 등록된 행 정리 (코드 재입력 등) */
+async function pruneDuplicateCalendarDevices(input: {
+  calendarId: string;
+  keepDeviceId: string;
+  displayName: string;
+  deviceLabel: string;
+}): Promise<void> {
+  const supabase = getSupabase();
+  const normalizedName = normalizeDeviceDisplayName(input.displayName);
+
+  const { data, error } = await supabase
+    .from("calendar_devices")
+    .select("id, device_id, display_name, device_label, last_seen_at")
+    .eq("calendar_id", input.calendarId);
+
+  if (error) throw error;
+
+  const rows = data ?? [];
+  const duplicateIds = rows
+    .filter((row) => {
+      if (row.device_id === input.keepDeviceId) return false;
+      return (
+        normalizeDeviceDisplayName(row.display_name ?? "") === normalizedName &&
+        row.device_label === input.deviceLabel
+      );
+    })
+    .map((row) => row.id);
+
+  if (duplicateIds.length === 0) return;
+
+  const { error: deleteError } = await supabase
+    .from("calendar_devices")
+    .delete()
+    .in("id", duplicateIds);
+
+  if (deleteError) throw deleteError;
+}
+
+/** 목록 표시용: device_id 기준 최신 1건만 */
+function dedupeCalendarDevices(rows: CalendarDevice[]): CalendarDevice[] {
+  const byDeviceId = new Map<string, CalendarDevice>();
+
+  for (const row of rows) {
+    const prev = byDeviceId.get(row.device_id);
+    if (!prev) {
+      byDeviceId.set(row.device_id, row);
+      continue;
+    }
+    const prevSeen = new Date(prev.last_seen_at).getTime();
+    const nextSeen = new Date(row.last_seen_at).getTime();
+    if (nextSeen >= prevSeen) {
+      byDeviceId.set(row.device_id, row);
+    }
+  }
+
+  return Array.from(byDeviceId.values()).sort(
+    (a, b) =>
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
+}
+
 /** 이 기기를 달력에 등록(또는 최근 접속 갱신) */
 export async function registerCalendarDevice(input: {
   calendarId: string;
@@ -470,30 +579,67 @@ export async function registerCalendarDevice(input: {
 }): Promise<CalendarDevice | null> {
   const supabase = getSupabase();
   const deviceId = getOrCreateDeviceId();
-  if (!deviceId) return null;
+  const displayName = input.displayName.trim();
+  if (!deviceId || !displayName) return null;
 
   const now = new Date().toISOString();
-  const payload = {
-    calendar_id: input.calendarId,
-    device_id: deviceId,
-    display_name: input.displayName.trim(),
-    device_label: detectDeviceLabel(),
-    user_agent:
-      typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 400) : "",
-    last_seen_at: now,
-  };
+  const deviceLabel = detectDeviceLabel();
+  const userAgent =
+    typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 400) : "";
 
-  const { data, error } = await supabase
+  const { data: existing, error: findError } = await supabase
     .from("calendar_devices")
-    .upsert(payload, { onConflict: "calendar_id,device_id" })
-    .select()
-    .single();
+    .select("*")
+    .eq("calendar_id", input.calendarId)
+    .eq("device_id", deviceId)
+    .maybeSingle();
 
-  if (error) throw error;
-  return data as CalendarDevice;
+  if (findError) throw findError;
+
+  let result: CalendarDevice;
+
+  if (existing) {
+    const { data, error } = await supabase
+      .from("calendar_devices")
+      .update({
+        display_name: displayName,
+        device_label: deviceLabel,
+        user_agent: userAgent,
+        last_seen_at: now,
+      })
+      .eq("id", existing.id)
+      .select()
+      .single();
+    if (error) throw error;
+    result = data as CalendarDevice;
+  } else {
+    const { data, error } = await supabase
+      .from("calendar_devices")
+      .insert({
+        calendar_id: input.calendarId,
+        device_id: deviceId,
+        display_name: displayName,
+        device_label: deviceLabel,
+        user_agent: userAgent,
+        last_seen_at: now,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    result = data as CalendarDevice;
+  }
+
+  await pruneDuplicateCalendarDevices({
+    calendarId: input.calendarId,
+    keepDeviceId: deviceId,
+    displayName,
+    deviceLabel,
+  });
+
+  return result;
 }
 
-/** 달력에 등록된 기기 목록 (가입 순) */
+/** 달력에 등록된 기기 목록 (가입 순, device_id 중복 제거) */
 export async function fetchCalendarDevices(
   calendarId: string,
 ): Promise<CalendarDevice[]> {
@@ -505,7 +651,7 @@ export async function fetchCalendarDevices(
     .order("created_at", { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as CalendarDevice[];
+  return dedupeCalendarDevices((data ?? []) as CalendarDevice[]);
 }
 
 /** 가장 최근 공유 메시지 (calendars 컬럼 기반) */
@@ -513,35 +659,50 @@ export async function fetchLatestMessage(
   calendarId: string,
 ): Promise<CalendarMessage | null> {
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("calendars")
-    .select(
-      "id, shared_message, shared_message_by, shared_message_at, created_at",
-    )
-    .eq("id", calendarId)
-    .maybeSingle();
+  const selects = [
+    "id, shared_message, shared_message_by, shared_message_at, shared_message_photo, created_at",
+    "id, shared_message, shared_message_by, shared_message_at, created_at",
+  ];
 
-  if (error) throw error;
-  if (!data) return null;
+  for (const fields of selects) {
+    const { data, error } = await supabase
+      .from("calendars")
+      .select(fields)
+      .eq("id", calendarId)
+      .maybeSingle();
 
-  const row = data as {
-    id: string;
-    shared_message?: string | null;
-    shared_message_by?: string | null;
-    shared_message_at?: string | null;
-    created_at: string;
-  };
+    if (error) {
+      if (error.code === "42703" && fields.includes("shared_message_photo")) {
+        continue;
+      }
+      throw error;
+    }
+    if (!data) return null;
 
-  const body = (row.shared_message ?? "").trim();
-  if (!body) return null;
+    const row = data as unknown as {
+      id: string;
+      shared_message?: string | null;
+      shared_message_by?: string | null;
+      shared_message_at?: string | null;
+      shared_message_photo?: string | null;
+      created_at: string;
+    };
 
-  return {
-    id: `current-${row.id}`,
-    calendar_id: row.id,
-    body,
-    updated_by: row.shared_message_by ?? "",
-    created_at: row.shared_message_at ?? row.created_at,
-  };
+    const body = (row.shared_message ?? "").trim();
+    const photo = (row.shared_message_photo ?? "").trim() || null;
+    if (!body && !photo) return null;
+
+    return {
+      id: `current-${row.id}`,
+      calendar_id: row.id,
+      body,
+      photo,
+      updated_by: row.shared_message_by ?? "",
+      created_at: row.shared_message_at ?? row.created_at,
+    };
+  }
+
+  return null;
 }
 
 /** 공유 메시지 이력 (최신순) */
@@ -578,14 +739,16 @@ export async function fetchMessageHistory(
     .slice(0, limit);
 }
 
-/** 새 공유 메시지 남기기 (이력 jsonb에 쌓임) */
+/** 공유 메시지 전달 (이력 없이 최신 1건만 유지) */
 export async function createCalendarMessage(input: {
   calendarId: string;
   body: string;
   updatedBy: string;
+  photo?: string | null;
 }): Promise<CalendarMessage> {
   const supabase = getSupabase();
   const body = input.body.trim();
+  const photo = (input.photo ?? "").trim() || null;
   const updatedBy = input.updatedBy.trim();
   const createdAt = new Date().toISOString();
   const entry: CalendarMessage = {
@@ -595,33 +758,39 @@ export async function createCalendarMessage(input: {
         : `msg-${Date.now()}`,
     calendar_id: input.calendarId,
     body,
+    photo,
     updated_by: updatedBy,
     created_at: createdAt,
   };
 
-  // 기존 이력 읽기
-  const { data: current, error: readError } = await supabase
-    .from("calendars")
-    .select("shared_message_history")
-    .eq("id", input.calendarId)
-    .maybeSingle();
+  const payloadWithPhoto = {
+    shared_message: body,
+    shared_message_by: updatedBy,
+    shared_message_at: createdAt,
+    shared_message_photo: photo,
+  };
+  const payloadTextOnly = {
+    shared_message: body,
+    shared_message_by: updatedBy,
+    shared_message_at: createdAt,
+  };
 
-  if (readError) throw readError;
+  let writeError = (
+    await supabase
+      .from("calendars")
+      .update(payloadWithPhoto)
+      .eq("id", input.calendarId)
+  ).error;
 
-  const prevRaw = (current as { shared_message_history?: unknown } | null)
-    ?.shared_message_history;
-  const prev = Array.isArray(prevRaw) ? prevRaw : [];
-  const nextHistory = [entry, ...prev].slice(0, 100);
-
-  const { error: writeError } = await supabase
-    .from("calendars")
-    .update({
-      shared_message: body,
-      shared_message_by: updatedBy,
-      shared_message_at: createdAt,
-      shared_message_history: nextHistory,
-    })
-    .eq("id", input.calendarId);
+  if (writeError?.code === "42703" && photo) {
+    writeError = (
+      await supabase
+        .from("calendars")
+        .update(payloadTextOnly)
+        .eq("id", input.calendarId)
+    ).error;
+    entry.photo = null;
+  }
 
   if (writeError) throw writeError;
   return entry;

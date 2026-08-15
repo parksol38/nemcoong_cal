@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { format, isSameMonth, isToday } from "date-fns";
 import { getHolidayName, isPublicHoliday } from "@/lib/holidays";
@@ -14,6 +14,8 @@ interface CalendarDayProps {
   date: Date;
   currentMonth: Date;
   shift?: Shift;
+  /** 현재 선택된 날짜 (팝업을 닫아도 유지) */
+  selected?: boolean;
   /** 미확인 변경 개수 */
   changeCount?: number;
   /** 설정에서 켠 경우에만 근무시간 숫자 표시 */
@@ -27,6 +29,7 @@ export function CalendarDay({
   date,
   currentMonth,
   shift,
+  selected = false,
   changeCount = 0,
   showHours = false,
   shiftColors,
@@ -51,6 +54,7 @@ export function CalendarDay({
     <div
       role="button"
       tabIndex={0}
+      aria-pressed={selected}
       onClick={() => onClick(date)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -63,7 +67,10 @@ export function CalendarDay({
         "sm:p-1.5",
         inMonth ? "opacity-100" : "opacity-35",
         visual ? "" : "border-transparent bg-white/70 dark:bg-white/5",
-        today ? "ring-2 ring-[#007AFF] ring-offset-1 ring-offset-[#F2F2F7] dark:ring-offset-[#0B0F14]" : "",
+        // 선택한 날짜 강조 (팝업 닫아도 유지)
+        selected
+          ? "ring-2 ring-accent ring-offset-1 ring-offset-[#F2F2F7] dark:ring-offset-[#0B0F14]"
+          : "",
       ].join(" ")}
       style={
         visual
@@ -79,15 +86,24 @@ export function CalendarDay({
           <span
             className={[
               "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold sm:h-6 sm:w-6 sm:text-xs",
-              today ? "bg-[#007AFF] text-white" : "",
-              !today && redDay && inMonth ? "text-rose-500" : "",
-              !today && saturday && !holiday && inMonth ? "text-sky-500" : "",
-              !today && !redDay && !saturday ? "text-gray-800 dark:text-gray-100" : "",
+              selected ? "bg-accent text-white" : "",
+              !selected && redDay && inMonth ? "text-rose-500" : "",
+              !selected && saturday && !holiday && inMonth ? "text-sky-500" : "",
+              !selected && !redDay && !saturday
+                ? "text-gray-800 dark:text-gray-100"
+                : "",
               !inMonth ? "text-gray-400" : "",
             ].join(" ")}
           >
             {format(date, "d")}
           </span>
+          {/* 오늘은 선택되지 않았을 때만 작은 점으로 표시 */}
+          {today && !selected ? (
+            <span
+              className="h-1 w-1 shrink-0 rounded-full bg-accent"
+              aria-label="오늘"
+            />
+          ) : null}
           {holidayName && inMonth ? (
             <span className="min-w-0 truncate text-[8px] font-semibold leading-tight text-rose-500 sm:text-[9px]">
               {holidayName}

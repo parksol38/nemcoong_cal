@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -73,7 +73,7 @@ export function ChangeNoticeModal({
           <button
             type="button"
             onClick={onClose}
-            className="h-12 w-full rounded-2xl bg-[#007AFF] text-sm font-semibold text-white transition active:scale-[0.98]"
+            className="h-12 w-full rounded-2xl bg-accent text-sm font-semibold text-white transition active:scale-[0.98]"
           >
             확인했어요
           </button>

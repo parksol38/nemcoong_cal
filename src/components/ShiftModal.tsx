@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { addDays, format } from "date-fns";
@@ -16,6 +16,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { nightHoursFromExtraPlacement } from "@/lib/allowanceRates";
 import { updateCalendarShiftPattern } from "@/lib/api";
 import {
   buildPatternShifts,
@@ -30,6 +31,8 @@ import {
 import {
   calcWorkHours,
   formatHoursLabel,
+  getShiftExtraAfterHours,
+  getShiftExtraBeforeHours,
   getShiftVisual,
   isSupportShift,
   SHIFT_DEFAULT_TIMES,
@@ -42,6 +45,8 @@ import {
 
 /** 자동 채우기가 가능한 교대유형만 */
 const FILLABLE_PATTERNS = SHIFT_PATTERNS.filter((p) => p.rotation.length > 0);
+
+type ExtraPlaceMode = "before" | "after" | "split";
 
 interface ShiftModalProps {
   open: boolean;
@@ -59,6 +64,8 @@ interface ShiftModalProps {
     startTime?: string | null;
     endTime?: string | null;
     extraHours?: number | null;
+    extraBeforeHours?: number | null;
+    extraAfterHours?: number | null;
   }) => Promise<void>;
   onSavePattern: (data: {
     items: { date: string; shiftType: ShiftType }[];
@@ -122,6 +129,9 @@ export function ShiftModal({
   const [extraHours, setExtraHours] = useState(0);
   const [extraOpen, setExtraOpen] = useState(false);
   const [extraDraft, setExtraDraft] = useState("0");
+  /** 추가시간 위치: 시작 전 / 종료 후 / 나눠서 */
+  const [extraPlace, setExtraPlace] = useState<ExtraPlaceMode | null>(null);
+  const [extraBeforeHours, setExtraBeforeHours] = useState(0);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const activePatternId = fillPattern ? fillPatternId : patternId;
@@ -148,6 +158,26 @@ export function ShiftModal({
     setExtraOpen(hasExtra);
     setSaveError(null);
 
+    const before = getShiftExtraBeforeHours(shift ?? {});
+    const after = getShiftExtraAfterHours(shift ?? {});
+    if (nextExtra <= 0) {
+      setExtraPlace(null);
+      setExtraBeforeHours(0);
+    } else if (before > 0 && after > 0) {
+      setExtraPlace("split");
+      setExtraBeforeHours(before);
+    } else if (before > 0) {
+      setExtraPlace("before");
+      setExtraBeforeHours(before);
+    } else if (after > 0) {
+      setExtraPlace("after");
+      setExtraBeforeHours(0);
+    } else {
+      // 추가시간은 있는데 위치가 없으면 사용자에게 묻기
+      setExtraPlace(null);
+      setExtraBeforeHours(0);
+    }
+
     const defaults = defaultTimesFor(type);
     if (isSupportShift(type) && shift?.start_time && shift?.end_time) {
       setStartTime(shift.start_time.slice(0, 5));
@@ -172,6 +202,51 @@ export function ShiftModal({
     () => calcWorkHours(startTime, endTime),
     [startTime, endTime],
   );
+  const resolvedTimes = useMemo(() => {
+    if (supportSelected) return { start: startTime, end: endTime };
+    return defaultTimesFor(shiftType);
+  }, [supportSelected, startTime, endTime, shiftType]);
+  const extraAfterHours = useMemo(() => {
+    if (extraHours <= 0 || !extraPlace) return 0;
+    if (extraPlace === "before") return 0;
+    if (extraPlace === "after") return extraHours;
+    return Math.max(
+      0,
+      Math.round((extraHours - extraBeforeHours) * 10) / 10,
+    );
+  }, [extraHours, extraPlace, extraBeforeHours]);
+  const extraNightPreview = useMemo(() => {
+    if (extraHours <= 0 || !extraPlace) return 0;
+    const before =
+      extraPlace === "before"
+        ? extraHours
+        : extraPlace === "split"
+          ? extraBeforeHours
+          : 0;
+    const after = extraAfterHours;
+    return nightHoursFromExtraPlacement({
+      id: "",
+      calendar_id: "",
+      date: "",
+      shift_type: shiftType,
+      note: "",
+      updated_by: "",
+      created_at: "",
+      updated_at: "",
+      start_time: resolvedTimes.start,
+      end_time: resolvedTimes.end,
+      extra_hours: extraHours,
+      extra_before_hours: before,
+      extra_after_hours: after,
+    });
+  }, [
+    extraHours,
+    extraPlace,
+    extraBeforeHours,
+    extraAfterHours,
+    shiftType,
+    resolvedTimes,
+  ]);
   const baseHoursPreview = useMemo(() => {
     if (supportSelected) return supportHours;
     return SHIFT_HOURS[shiftType] ?? 0;
@@ -183,6 +258,19 @@ export function ShiftModal({
     if (extraHours > 0) return `+${extra}`;
     return base || "0";
   }, [baseHoursPreview, extraHours]);
+
+  const applyExtraAmount = (next: number) => {
+    const clamped = Math.min(24, Math.max(0, Math.round(next * 10) / 10));
+    setExtraHours(clamped);
+    setExtraDraft(String(clamped));
+    if (clamped <= 0) {
+      setExtraPlace(null);
+      setExtraBeforeHours(0);
+      setExtraOpen(false);
+      return;
+    }
+    setExtraBeforeHours((prev) => Math.min(prev, clamped));
+  };
 
   const previewLine = useMemo(() => {
     if (!fillPattern || rotation.length === 0) return "";
@@ -238,6 +326,34 @@ export function ShiftModal({
     setExtraHours(committedExtra);
     setExtraDraft(String(committedExtra));
 
+    let before = 0;
+    let after = 0;
+    if (committedExtra > 0) {
+      if (!extraPlace) {
+        setSaveError(
+          "추가 시간을 근무 시작 전에 붙였는지, 종료 후에 붙였는지 선택해 주세요.",
+        );
+        setExtraOpen(true);
+        return;
+      }
+      if (extraPlace === "before") {
+        before = committedExtra;
+        after = 0;
+      } else if (extraPlace === "after") {
+        before = 0;
+        after = committedExtra;
+      } else {
+        before = Math.min(committedExtra, Math.max(0, extraBeforeHours));
+        after = Math.round((committedExtra - before) * 10) / 10;
+        if (before <= 0 || after <= 0) {
+          setSaveError(
+            "나눠서 추가할 때는 시작 전·종료 후 시간을 각각 0보다 크게 입력해 주세요.",
+          );
+          return;
+        }
+      }
+    }
+
     try {
       if (fillPattern && !supportSelected && patternSupportsFill(fillPatternId)) {
         const items = buildPatternShifts({
@@ -265,10 +381,16 @@ export function ShiftModal({
         startTime: supportSelected ? startTime : null,
         endTime: supportSelected ? endTime : null,
         extraHours: committedExtra,
+        extraBeforeHours: before,
+        extraAfterHours: after,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (/extra_hours/i.test(msg)) {
+      if (/extra_before_hours|extra_after_hours/i.test(msg)) {
+        setSaveError(
+          "추가시간 위치 저장용 DB 컬럼이 없습니다. Supabase에서 migrate-add-extra-placement.sql 을 실행해 주세요.",
+        );
+      } else if (/extra_hours/i.test(msg)) {
         setSaveError(
           "추가시간 저장용 DB 컬럼이 아직 없습니다. Supabase에서 migrate-add-extra-hours.sql 을 실행해 주세요.",
         );
@@ -386,7 +508,7 @@ export function ShiftModal({
                 className={[
                   "flex items-center gap-2 rounded-2xl border-2 px-3 py-3 text-left transition-all active:scale-[0.98]",
                   extraOpen || extraHours > 0
-                    ? "border-[#007AFF] bg-[#007AFF]/10 text-[#007AFF] shadow-sm"
+                    ? "border-accent bg-accent/10 text-accent shadow-sm"
                     : "border-gray-100 bg-gray-50 text-gray-700 hover:border-gray-200 dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:hover:border-white/20",
                 ].join(" ")}
               >
@@ -394,7 +516,7 @@ export function ShiftModal({
                 <div>
                   <p className="text-sm font-bold">시간추가</p>
                   <p
-                    className={`text-[10px] ${extraOpen || extraHours > 0 ? "text-[#007AFF]/70" : "text-gray-400"}`}
+                    className={`text-[10px] ${extraOpen || extraHours > 0 ? "text-accent/70" : "text-gray-400"}`}
                   >
                     교육 등 +α
                   </p>
@@ -404,7 +526,7 @@ export function ShiftModal({
           </div>
 
           {(extraOpen || extraHours > 0) && !fillPattern ? (
-            <div className="rounded-2xl border border-[#007AFF]/20 bg-[#007AFF]/5 p-3.5 dark:bg-[#007AFF]/10">
+            <div className="rounded-2xl border border-accent/20 bg-accent/5 p-3.5 dark:bg-accent/10">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
                   추가 시간
@@ -412,9 +534,7 @@ export function ShiftModal({
                 <button
                   type="button"
                   onClick={() => {
-                    setExtraHours(0);
-                    setExtraDraft("0");
-                    setExtraOpen(false);
+                    applyExtraAmount(0);
                   }}
                   className="text-[11px] font-semibold text-gray-400 transition active:opacity-70"
                 >
@@ -432,20 +552,14 @@ export function ShiftModal({
                 <button
                   type="button"
                   aria-label="1시간 감소"
-                  onClick={() => {
-                    setExtraHours((h) => {
-                      const next = Math.max(0, Math.round((h - 1) * 10) / 10);
-                      setExtraDraft(String(next));
-                      return next;
-                    });
-                  }}
+                  onClick={() => applyExtraAmount(extraHours - 1)}
                   className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-gray-700 shadow-sm ring-1 ring-gray-200 transition active:scale-95 dark:bg-[#0B0F14] dark:text-gray-200 dark:ring-white/10"
                 >
                   <Minus className="h-4 w-4" />
                 </button>
                 <div className="min-w-[5.5rem] text-center">
                   <label className="inline-flex items-baseline justify-center gap-0.5">
-                    <span className="text-2xl font-bold text-[#007AFF]">+</span>
+                    <span className="text-2xl font-bold text-accent">+</span>
                     <input
                       type="text"
                       inputMode="decimal"
@@ -463,20 +577,26 @@ export function ShiftModal({
                         if (cleaned === "" || cleaned === ".") return;
                         const n = Number(cleaned);
                         if (!Number.isFinite(n)) return;
-                        setExtraHours(
-                          Math.min(24, Math.max(0, Math.round(n * 10) / 10)),
+                        const clamped = Math.min(
+                          24,
+                          Math.max(0, Math.round(n * 10) / 10),
                         );
+                        setExtraHours(clamped);
+                        if (clamped <= 0) {
+                          setExtraPlace(null);
+                          setExtraBeforeHours(0);
+                        } else {
+                          setExtraBeforeHours((prev) =>
+                            Math.min(prev, clamped),
+                          );
+                        }
                       }}
                       onBlur={() => {
                         const n = Number(extraDraft);
-                        const next = Number.isFinite(n)
-                          ? Math.min(24, Math.max(0, Math.round(n * 10) / 10))
-                          : 0;
-                        setExtraHours(next);
-                        setExtraDraft(String(next));
+                        applyExtraAmount(Number.isFinite(n) ? n : 0);
                       }}
                       onFocus={(e) => e.target.select()}
-                      className="w-[3.25rem] border-b-2 border-[#007AFF]/40 bg-transparent pb-0.5 text-center text-2xl font-bold tabular-nums text-[#007AFF] outline-none focus:border-[#007AFF]"
+                      className="w-[3.25rem] border-b-2 border-accent/40 bg-transparent pb-0.5 text-center text-2xl font-bold tabular-nums text-accent outline-none focus:border-accent"
                     />
                   </label>
                   <p className="mt-0.5 text-[10px] text-gray-400">시간</p>
@@ -484,18 +604,126 @@ export function ShiftModal({
                 <button
                   type="button"
                   aria-label="1시간 증가"
-                  onClick={() => {
-                    setExtraHours((h) => {
-                      const next = Math.min(24, Math.round((h + 1) * 10) / 10);
-                      setExtraDraft(String(next));
-                      return next;
-                    });
-                  }}
+                  onClick={() => applyExtraAmount(extraHours + 1)}
                   className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-gray-700 shadow-sm ring-1 ring-gray-200 transition active:scale-95 dark:bg-[#0B0F14] dark:text-gray-200 dark:ring-white/10"
                 >
                   <Plus className="h-4 w-4" />
                 </button>
               </div>
+
+              {extraHours > 0 ? (
+                <div className="mt-3 space-y-2 border-t border-accent/15 pt-3">
+                  <p className="text-[12px] font-semibold text-gray-800 dark:text-gray-100">
+                    추가 {formatHoursLabel(extraHours)}시간은 어디에 붙였나요?
+                  </p>
+                  <p className="text-[10px] leading-relaxed text-gray-500">
+                    기본 근무 {resolvedTimes.start}~{resolvedTimes.end} 기준 ·
+                    22:00~06:00에 겹치면 야간수당에도 반영돼요.
+                  </p>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {(
+                      [
+                        {
+                          key: "before" as const,
+                          label: `근무 시작 전 (${resolvedTimes.start} 이전)`,
+                        },
+                        {
+                          key: "after" as const,
+                          label: `근무 종료 후 (${resolvedTimes.end} 이후)`,
+                        },
+                        {
+                          key: "split" as const,
+                          label: "시작 전·종료 후에 나눠서",
+                        },
+                      ] as const
+                    ).map((opt) => {
+                      const selected = extraPlace === opt.key;
+                      return (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => {
+                            setExtraPlace(opt.key);
+                            if (opt.key === "split") {
+                              const half =
+                                Math.round((extraHours / 2) * 10) / 10;
+                              setExtraBeforeHours(
+                                Math.min(
+                                  extraHours - 0.1,
+                                  Math.max(0.1, half),
+                                ),
+                              );
+                            } else {
+                              setExtraBeforeHours(
+                                opt.key === "before" ? extraHours : 0,
+                              );
+                            }
+                          }}
+                          className={[
+                            "rounded-xl border px-3 py-2.5 text-left text-[12px] font-semibold transition active:scale-[0.99]",
+                            selected
+                              ? "border-accent bg-white text-accent shadow-sm dark:bg-[#0B0F14]"
+                              : "border-transparent bg-white/70 text-gray-700 dark:bg-black/20 dark:text-gray-200",
+                          ].join(" ")}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {extraPlace === "split" ? (
+                    <div className="rounded-xl bg-white/80 px-3 py-2.5 dark:bg-black/20">
+                      <label className="block">
+                        <span className="mb-1 block text-[10px] font-semibold text-gray-500">
+                          시작 전 (나머지 {formatHoursLabel(extraAfterHours)}
+                          시간은 종료 후)
+                        </span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={String(extraBeforeHours)}
+                          onChange={(e) => {
+                            const n = Number(
+                              e.target.value.replace(/[^0-9.]/g, ""),
+                            );
+                            if (!Number.isFinite(n)) return;
+                            setExtraBeforeHours(
+                              Math.min(
+                                extraHours,
+                                Math.max(0, Math.round(n * 10) / 10),
+                              ),
+                            );
+                          }}
+                          className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-center text-sm tabular-nums outline-none focus:border-accent dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
+                        />
+                      </label>
+                    </div>
+                  ) : null}
+
+                  {extraPlace ? (
+                    <p className="text-[11px] leading-relaxed text-gray-600 dark:text-gray-300">
+                      시간외 +{formatHoursLabel(extraHours)}시간
+                      {extraNightPreview > 0 ? (
+                        <>
+                          {" "}
+                          · 야간수당 추가{" "}
+                          <span className="font-semibold text-accent">
+                            +{formatHoursLabel(extraNightPreview)}시간
+                          </span>
+                          (22~06 겹침)
+                        </>
+                      ) : (
+                        <> · 이 배치는 야간(22~06) 겹침 없음</>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                      위치를 선택해야 저장할 수 있어요.
+                    </p>
+                  )}
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -508,8 +736,9 @@ export function ShiftModal({
                 기본값은 {SHIFT_LABELS[shiftType === "day_support" ? "day" : "night"]}과
                 같고, 아래에서 직접 조정할 수 있어요.
               </p>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block">
+              {/* 모바일 WebView의 time 입력은 가로가 넓어 2열이면 잘리므로 세로 배치 */}
+              <div className="flex flex-col gap-2.5">
+                <label className="block min-w-0">
                   <span className="mb-1.5 block text-xs font-semibold text-gray-600">
                     시작
                   </span>
@@ -517,10 +746,10 @@ export function ShiftModal({
                     type="time"
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
-                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
+                    className="box-border w-full min-w-0 max-w-full rounded-xl border border-gray-200 bg-white px-2.5 py-2.5 text-[15px] tabular-nums outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100 [&::-webkit-calendar-picker-indicator]:ml-0 [&::-webkit-datetime-edit]:min-w-0 [&::-webkit-datetime-edit]:p-0"
                   />
                 </label>
-                <label className="block">
+                <label className="block min-w-0">
                   <span className="mb-1.5 block text-xs font-semibold text-gray-600">
                     종료
                   </span>
@@ -528,7 +757,7 @@ export function ShiftModal({
                     type="time"
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
-                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
+                    className="box-border w-full min-w-0 max-w-full rounded-xl border border-gray-200 bg-white px-2.5 py-2.5 text-[15px] tabular-nums outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100 [&::-webkit-calendar-picker-indicator]:ml-0 [&::-webkit-datetime-edit]:min-w-0 [&::-webkit-datetime-edit]:p-0"
                   />
                 </label>
               </div>
@@ -551,11 +780,11 @@ export function ShiftModal({
                   type="checkbox"
                   checked={fillPattern}
                   onChange={(e) => setFillPattern(e.target.checked)}
-                  className="mt-1 h-4 w-4 rounded border-gray-300 text-[#007AFF]"
+                  className="mt-1 h-4 w-4 rounded border-gray-300 text-accent"
                 />
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-1.5 text-sm font-semibold text-gray-900 dark:text-gray-100">
-                    <Sparkles className="h-3.5 w-3.5 text-[#007AFF]" />
+                    <Sparkles className="h-3.5 w-3.5 text-accent" />
                     (선택) 이후 일정까지 패턴으로 채우기
                   </p>
                   <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500">
@@ -565,7 +794,7 @@ export function ShiftModal({
               </label>
 
               {fillPattern ? (
-                <div className="mt-3 space-y-3 border-t border-[#007AFF]/10 pt-3">
+                <div className="mt-3 space-y-3 border-t border-accent/10 pt-3">
                   {/* 설정한 교대유형 + 패턴 일차를 한 줄에 */}
                   <div className="grid grid-cols-2 gap-2">
                     <div className="min-w-0">
@@ -575,7 +804,7 @@ export function ShiftModal({
                       <select
                         value={fillPatternId}
                         onChange={(e) => selectFillPatternId(e.target.value)}
-                        className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-2.5 text-sm outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
+                        className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-2.5 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
                       >
                         {FILLABLE_PATTERNS.map((p) => (
                           <option key={p.id} value={p.id}>
@@ -596,7 +825,7 @@ export function ShiftModal({
                           const nextType = rotation[idx];
                           if (nextType) setShiftType(nextType);
                         }}
-                        className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-2.5 text-sm outline-none focus:border-[#007AFF] focus:ring-2 focus:ring-[#007AFF]/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
+                        className="w-full rounded-xl border border-gray-200 bg-white px-2.5 py-2.5 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-white/10 dark:bg-[#0B0F14] dark:text-gray-100"
                       >
                         {rotation.map((_, i) => (
                           <option key={i} value={i}>
@@ -634,7 +863,7 @@ export function ShiftModal({
                           onClick={() => setFillDays(opt.days)}
                           className={`flex-1 rounded-xl px-2 py-2 text-xs font-semibold transition active:scale-95 ${
                             fillDays === opt.days
-                              ? "bg-[#007AFF] text-white"
+                              ? "bg-accent text-white"
                               : "bg-white text-gray-600 ring-1 ring-gray-200 dark:bg-[#0B0F14] dark:text-gray-300 dark:ring-white/15"
                           }`}
                         >
@@ -698,7 +927,7 @@ export function ShiftModal({
             type="button"
             disabled={saving}
             onClick={() => void handleSave()}
-            className="h-12 flex-[1.6] rounded-2xl bg-[#007AFF] text-sm font-semibold text-white shadow-sm transition active:scale-[0.98] disabled:opacity-60"
+            className="h-12 flex-[1.6] rounded-2xl bg-accent text-sm font-semibold text-white shadow-sm transition active:scale-[0.98] disabled:opacity-60"
           >
             {saving
               ? "저장 중…"

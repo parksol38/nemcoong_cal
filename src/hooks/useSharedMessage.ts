@@ -37,9 +37,11 @@ export function useSharedMessage(calendarId: string) {
       shared_message?: string | null;
       shared_message_by?: string | null;
       shared_message_at?: string | null;
+      shared_message_photo?: string | null;
     }) => {
       const body = (row.shared_message ?? "").trim();
-      if (!body) {
+      const photo = (row.shared_message_photo ?? "").trim() || null;
+      if (!body && !photo) {
         setMessage(null);
         return;
       }
@@ -47,6 +49,7 @@ export function useSharedMessage(calendarId: string) {
         id: `current-${row.id ?? calendarId}`,
         calendar_id: row.id ?? calendarId,
         body,
+        photo,
         updated_by: row.shared_message_by ?? "",
         created_at: row.shared_message_at ?? new Date().toISOString(),
       });
@@ -99,6 +102,7 @@ export function useSharedMessage(calendarId: string) {
               shared_message?: string | null;
               shared_message_by?: string | null;
               shared_message_at?: string | null;
+              shared_message_photo?: string | null;
             },
           );
           setSetupHint(null);
@@ -112,15 +116,17 @@ export function useSharedMessage(calendarId: string) {
   }, [calendarId, applyCalendarRow]);
 
   const postMessage = useCallback(
-    async (body: string, updatedBy: string) => {
+    async (body: string, updatedBy: string, photo?: string | null) => {
       const trimmed = body.trim();
-      if (!trimmed) throw new Error("메시지를 입력해 주세요.");
+      const photoData = (photo ?? "").trim() || null;
+      if (!trimmed && !photoData) throw new Error("메시지 또는 사진을 추가해 주세요.");
       setSaving(true);
       try {
         const saved = await createCalendarMessage({
           calendarId,
           body: trimmed,
           updatedBy,
+          photo: photoData,
         });
         setMessage(saved);
         setSetupHint(null);

@@ -2,15 +2,26 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import { APP_NAME, APP_TAGLINE } from "@/lib/legal";
+import {
+  getAgencyVisual,
+  type AgencyTheme,
+} from "@/lib/agencyTheme";
 
 interface SplashScreenProps {
   onDone: () => void;
+  agency?: AgencyTheme;
   /** 최소 노출 시간 (ms) */
   durationMs?: number;
 }
 
-export function SplashScreen({ onDone, durationMs = 1600 }: SplashScreenProps) {
+export function SplashScreen({
+  onDone,
+  agency = "police",
+  durationMs = 1600,
+}: SplashScreenProps) {
   const [hiding, setHiding] = useState(false);
+  const visual = getAgencyVisual(agency);
 
   useEffect(() => {
     const hideTimer = window.setTimeout(() => setHiding(true), durationMs);
@@ -23,24 +34,33 @@ export function SplashScreen({ onDone, durationMs = 1600 }: SplashScreenProps) {
 
   return (
     <div
-      className={`fixed inset-0 z-[100] flex flex-col items-center justify-center bg-gradient-to-b from-[#FFF5F7] via-[#F2F2F7] to-[#E8F1FF] transition-opacity duration-300 dark:from-[#12161c] dark:via-[#0B0F14] dark:to-[#0f1724] ${
+      className={`fixed inset-0 z-[100] flex flex-col items-center justify-center transition-opacity duration-300 ${
         hiding ? "pointer-events-none opacity-0" : "opacity-100"
       }`}
+      style={{
+        background: `linear-gradient(180deg, ${visual.heroFrom} 0%, ${visual.heroVia} 45%, ${visual.heroTo} 100%)`,
+      }}
     >
       <div className="animate-float px-6">
         <Image
-          src="/images/couple-sticker.png"
-          alt="우리 둘"
+          src={visual.splashImage}
+          alt={APP_NAME}
           width={280}
           height={280}
           priority
-          className="h-auto w-[220px] drop-shadow-xl sm:w-[260px]"
+          className="mx-auto h-auto w-[180px] rounded-[28px] shadow-2xl shadow-black/30 sm:w-[210px]"
         />
       </div>
-      <p className="mt-5 animate-fade-in px-4 text-center text-base font-bold leading-snug tracking-tight text-gray-800 dark:text-gray-100">
-        멋진여자 박네모가 만든 넴쿵 교대근무표
+      <p className="mt-6 animate-fade-in px-4 text-center text-2xl font-bold tracking-tight text-white">
+        {APP_NAME}
       </p>
-      <p className="mt-1 text-xs text-gray-400">함께 보는 하루</p>
+      <p className="mt-2 text-sm font-medium text-white/80">{APP_TAGLINE}</p>
+      <p
+        className="mt-1 text-xs font-semibold uppercase tracking-[0.2em]"
+        style={{ color: visual.accentSoft }}
+      >
+        {agency === "fire" ? "FIRE RESCUE" : "POLICE DUTY"}
+      </p>
     </div>
   );
 }

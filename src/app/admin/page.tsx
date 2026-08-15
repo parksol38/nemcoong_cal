@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { format } from "date-fns";
@@ -187,7 +187,7 @@ export default function AdminPage() {
           className="w-full max-w-sm rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur"
         >
           <div className="mb-5 text-center">
-            <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-[#007AFF]/20 text-[#6BB3FF]">
+            <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-accent/20 text-[#6BB3FF]">
               <Shield className="h-5 w-5" />
             </div>
             <h1 className="text-xl font-bold text-white">관리자</h1>
@@ -200,7 +200,7 @@ export default function AdminPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="관리자 비밀번호"
-            className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3.5 text-center text-white outline-none placeholder:text-white/30 focus:border-[#007AFF]"
+            className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3.5 text-center text-white outline-none placeholder:text-white/30 focus:border-accent"
             autoFocus
           />
           {loginError ? (
@@ -209,7 +209,7 @@ export default function AdminPage() {
           <button
             type="submit"
             disabled={loggingIn}
-            className="mt-4 h-12 w-full rounded-2xl bg-[#007AFF] text-sm font-semibold text-white disabled:opacity-60"
+            className="mt-4 h-12 w-full rounded-2xl bg-accent text-sm font-semibold text-white disabled:opacity-60"
           >
             {loggingIn ? "확인 중…" : "입장"}
           </button>
@@ -351,7 +351,7 @@ export default function AdminPage() {
                           type="button"
                           disabled={resetting === cal.id}
                           onClick={() => void handleReset(cal.id)}
-                          className="h-10 rounded-xl bg-[#007AFF] px-3 text-xs font-semibold disabled:opacity-60"
+                          className="h-10 rounded-xl bg-accent px-3 text-xs font-semibold disabled:opacity-60"
                         >
                           {resetting === cal.id ? "처리 중" : "초기화"}
                         </button>

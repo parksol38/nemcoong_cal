@@ -11,7 +11,13 @@ import {
 } from "date-fns";
 import { deleteShift, fetchShifts, upsertShift, upsertShiftsBulk } from "@/lib/api";
 import { getSupabase } from "@/lib/supabase";
-import { getShiftExtraHours, type Shift, type ShiftType } from "@/lib/types";
+import {
+  getShiftExtraAfterHours,
+  getShiftExtraBeforeHours,
+  getShiftExtraHours,
+  type Shift,
+  type ShiftType,
+} from "@/lib/types";
 
 interface UseShiftsOptions {
   calendarId: string | null;
@@ -22,6 +28,8 @@ function normalizeShift(row: Shift): Shift {
   return {
     ...row,
     extra_hours: getShiftExtraHours(row),
+    extra_before_hours: getShiftExtraBeforeHours(row),
+    extra_after_hours: getShiftExtraAfterHours(row),
   };
 }
 
@@ -116,12 +124,13 @@ export function useShifts({ calendarId, currentMonth }: UseShiftsOptions) {
             const idx = prev.findIndex(
               (s) => s.id === raw.id || s.date === raw.date,
             );
+            const prevRow = idx >= 0 ? prev[idx]! : null;
             const hasExtraField = Object.prototype.hasOwnProperty.call(
               raw,
               "extra_hours",
             );
             const incomingExtra = getShiftExtraHours(raw);
-            const prevExtra = idx >= 0 ? getShiftExtraHours(prev[idx]!) : 0;
+            const prevExtra = prevRow ? getShiftExtraHours(prevRow) : 0;
             // DB에 extra_hours가 안 남는 경우 realtime이 0으로 덮어쓰지 않게 함
             let nextExtra = prevExtra;
             if (!hasExtraField) nextExtra = prevExtra;
@@ -129,9 +138,28 @@ export function useShifts({ calendarId, currentMonth }: UseShiftsOptions) {
             else if (prevExtra > 0) nextExtra = prevExtra;
             else nextExtra = 0;
 
+            const keepPlacement = (key: "extra_before_hours" | "extra_after_hours") => {
+              const has = Object.prototype.hasOwnProperty.call(raw, key);
+              const incoming =
+                key === "extra_before_hours"
+                  ? getShiftExtraBeforeHours(raw)
+                  : getShiftExtraAfterHours(raw);
+              const prevVal = prevRow
+                ? key === "extra_before_hours"
+                  ? getShiftExtraBeforeHours(prevRow)
+                  : getShiftExtraAfterHours(prevRow)
+                : 0;
+              if (!has) return prevVal;
+              if (incoming > 0) return incoming;
+              if (prevVal > 0 && nextExtra > 0) return prevVal;
+              return incoming;
+            };
+
             const row: Shift = {
               ...normalizeShift(raw),
               extra_hours: nextExtra,
+              extra_before_hours: keepPlacement("extra_before_hours"),
+              extra_after_hours: keepPlacement("extra_after_hours"),
             };
             if (idx >= 0) {
               const next = [...prev];
@@ -159,11 +187,25 @@ export function useShifts({ calendarId, currentMonth }: UseShiftsOptions) {
       startTime?: string | null;
       endTime?: string | null;
       extraHours?: number | null;
+      extraBeforeHours?: number | null;
+      extraAfterHours?: number | null;
     }) => {
       if (!calendarId) throw new Error("달력이 없습니다.");
       const requestedExtra =
         Number.isFinite(Number(input.extraHours)) && Number(input.extraHours) > 0
           ? Math.round(Number(input.extraHours) * 10) / 10
+          : 0;
+      const requestedBefore =
+        requestedExtra > 0 &&
+        Number.isFinite(Number(input.extraBeforeHours)) &&
+        Number(input.extraBeforeHours) > 0
+          ? Math.round(Number(input.extraBeforeHours) * 10) / 10
+          : 0;
+      const requestedAfter =
+        requestedExtra > 0 &&
+        Number.isFinite(Number(input.extraAfterHours)) &&
+        Number(input.extraAfterHours) > 0
+          ? Math.round(Number(input.extraAfterHours) * 10) / 10
           : 0;
       const saved = {
         ...normalizeShift(
@@ -174,6 +216,8 @@ export function useShifts({ calendarId, currentMonth }: UseShiftsOptions) {
         ),
         // 저장 요청한 추가시간을 항상 반영 (응답 누락 방지)
         extra_hours: requestedExtra,
+        extra_before_hours: requestedBefore,
+        extra_after_hours: requestedAfter,
       };
       setShifts((prev) => {
         const idx = prev.findIndex(

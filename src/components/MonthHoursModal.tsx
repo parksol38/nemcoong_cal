@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
@@ -40,10 +40,10 @@ interface MonthHoursModalProps {
   onClose: () => void;
 }
 
-/** SVG 도넛 차트 */
+/** SVG 도넛 차트 (근무시간 섹션용 · 소형) */
 function DonutChart({ buckets }: { buckets: HoursBucket[] }) {
-  const size = 168;
-  const stroke = 22;
+  const size = 88;
+  const stroke = 12;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const total = buckets.reduce((s, b) => s + b.hours, 0);
@@ -62,7 +62,7 @@ function DonutChart({ buckets }: { buckets: HoursBucket[] }) {
           });
 
   return (
-    <div className="relative mx-auto h-[168px] w-[168px]">
+    <div className="relative h-[88px] w-[88px] shrink-0">
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
         <circle
           cx={size / 2}
@@ -89,11 +89,10 @@ function DonutChart({ buckets }: { buckets: HoursBucket[] }) {
         ))}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <p className="text-[11px] font-medium text-gray-400">합계</p>
-        <p className="text-2xl font-bold tabular-nums text-gray-900 dark:text-gray-100">
+        <p className="text-base font-bold tabular-nums leading-none text-gray-900 dark:text-gray-100">
           {formatHoursLabel(total) || "0"}
         </p>
-        <p className="text-[11px] font-semibold text-gray-500">시간</p>
+        <p className="mt-0.5 text-[9px] font-semibold text-gray-400">시간</p>
       </div>
     </div>
   );
@@ -203,206 +202,227 @@ export function MonthHoursModal({
           </button>
         </div>
 
-        <div className="max-h-[70vh] space-y-5 overflow-y-auto px-5 py-5">
-          <DonutChart buckets={buckets} />
-
-          <div className="space-y-2">
-            {pay.rows.map((row) => (
-              <div
-                key={row.key}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-gray-50/80 px-3.5 py-3 dark:border-white/10 dark:bg-white/5"
-              >
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: row.color }}
-                  />
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                      {row.label}
-                    </p>
-                    <p className="text-[11px] text-gray-400">
-                      {formatHoursLabel(row.hours) || "0"}시간
-                      {showPay ? ` · 시급 ${formatWon(row.rate)}` : ""}
-                    </p>
-                  </div>
-                </div>
-                {showPay ? (
-                  <p className="shrink-0 text-sm font-bold tabular-nums text-gray-800 dark:text-gray-100">
-                    {formatWon(row.amount)}
-                  </p>
-                ) : null}
-              </div>
-            ))}
-          </div>
-
+        <div className="max-h-[70vh] space-y-4 overflow-y-auto px-5 py-4">
           {showPay ? (
-            <div className="space-y-2">
-              <div className="rounded-2xl bg-[#007AFF]/10 px-4 py-4 dark:bg-[#007AFF]/15">
-                <p className="text-[11px] font-medium text-[#007AFF]/80">
+            <>
+              {/* 1. 결과: 예상 수령액 */}
+              <div className="rounded-2xl bg-accent/10 px-4 py-3.5 dark:bg-accent/15">
+                <p className="text-[11px] font-medium text-accent/80">
                   이번 달 예상 수령액
                   {profileLabel ? ` · ${profileLabel}` : ""}
                 </p>
-                <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-[#007AFF]">
+                <p className="mt-0.5 text-2xl font-bold tabular-nums tracking-tight text-accent">
                   {formatWon(monthlyTakeHome)}
                 </p>
-                <p className="mt-1.5 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
-                  봉급표 기본급
-                  {tableBase != null ? ` ${formatWon(tableBase)}` : ""}
-                  {allowancePay
-                    ? ` + 수당 ${formatWon(allowancePay.total)}`
-                    : ""}
-                  {allowancePay && allowancePay.overtimePay > 0
-                    ? ` (시간외 ${formatWon(allowancePay.overtimePay)})`
-                    : ""}
-                  . 공제·기타수당 전 참고용이에요.
+                <p className="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+                  공제·기타수당 전 · 참고용
                 </p>
               </div>
 
-              {tableBase != null ? (
-                <div className="rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-white/10 dark:bg-white/5">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] font-medium text-gray-400">
-                      봉급표 기본급
-                    </p>
-                    <p className="text-sm font-bold tabular-nums text-gray-900 dark:text-gray-100">
-                      {formatWon(tableBase)}
-                    </p>
+              {/* 2. 구성: 기본급 + 수당 = 수령액 */}
+              <section>
+                <p className="mb-1.5 text-[11px] font-semibold text-gray-500">
+                  수령액 구성
+                </p>
+                <div className="overflow-hidden rounded-xl border border-gray-100 dark:border-white/10">
+                  <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+                    <span className="text-[13px] text-gray-700 dark:text-gray-200">
+                      ① 기본급
+                    </span>
+                    <span className="text-[13px] font-semibold tabular-nums text-gray-900 dark:text-gray-100">
+                      {tableBase != null ? formatWon(tableBase) : "—"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 border-t border-gray-100 px-3 py-2.5 dark:border-white/10">
+                    <span className="text-[13px] text-gray-700 dark:text-gray-200">
+                      ② 수당 합계
+                    </span>
+                    <span className="text-[13px] font-semibold tabular-nums text-gray-900 dark:text-gray-100">
+                      {allowancePay ? formatWon(allowancePay.total) : "—"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 border-t border-dashed border-gray-200 bg-gray-50/80 px-3 py-2.5 dark:border-white/15 dark:bg-white/5">
+                    <span className="text-[13px] font-bold text-gray-900 dark:text-gray-100">
+                      ① + ② 예상 수령액
+                    </span>
+                    <span className="text-[13px] font-bold tabular-nums text-accent">
+                      {formatWon(monthlyTakeHome)}
+                    </span>
                   </div>
                 </div>
-              ) : null}
+                {!salaryProfile ? (
+                  <p className="mt-1.5 text-[10px] leading-relaxed text-amber-700 dark:text-amber-300/90">
+                    설정 → 내 계급·호봉을 지정하면 기본급·수당이 계산돼요.
+                  </p>
+                ) : null}
+              </section>
+            </>
+          ) : null}
 
-              {unitRates && allowancePay ? (
-                <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/70 px-4 py-3.5 dark:border-emerald-500/30 dark:bg-emerald-500/10">
-                  <div className="mb-2 flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300">
-                        시간외·야간·휴일 수당 (2026 단가)
-                      </p>
-                      <p className="mt-0.5 text-[10px] text-emerald-700/80 dark:text-emerald-400/80">
-                        근무표 자동 집계 · 녹색 칸에서 수정 가능
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={resetAllowanceFromShifts}
-                      className="shrink-0 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300"
-                    >
-                      근무표로 다시 채우기
-                    </button>
+          {/* 3. 근무시간 (수당 집계의 근거) */}
+          <section>
+            <p className="mb-1.5 text-[11px] font-semibold text-gray-500">
+              근무시간
+              <span className="ml-1 font-normal text-gray-400">
+                · 야간·휴일 수당 집계 근거
+              </span>
+            </p>
+            <div className="flex items-center gap-3 rounded-xl border border-gray-100 px-3 py-2.5 dark:border-white/10">
+              <DonutChart buckets={buckets} />
+              <div className="min-w-0 flex-1 space-y-1">
+                {pay.rows.map((row) => (
+                  <div
+                    key={row.key}
+                    className="flex items-center gap-2 text-[12px]"
+                  >
+                    <span
+                      className="h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: row.color }}
+                      aria-hidden
+                    />
+                    <span className="min-w-0 flex-1 truncate text-gray-600 dark:text-gray-300">
+                      {row.label}
+                    </span>
+                    <span className="shrink-0 tabular-nums font-semibold text-gray-900 dark:text-gray-100">
+                      {formatHoursLabel(row.hours) || "0"}h
+                    </span>
                   </div>
+                ))}
+                <p className="pt-0.5 text-[10px] text-gray-400">
+                  합계 {formatHoursLabel(totalHours) || "0"}시간
+                </p>
+              </div>
+            </div>
+          </section>
 
-                  <div className="mb-2 rounded-xl bg-white/70 px-2.5 py-2 text-[10px] leading-relaxed text-emerald-900/80 dark:bg-black/20 dark:text-emerald-200/80">
-                    이번 달 집계: 시간외 {formatHoursLabel(shiftOt) || "0"}시간 ·
-                    야간(22~06) {formatHoursLabel(shiftNight) || "0"}시간 · 휴일{" "}
-                    {shiftHoliday}일
-                  </div>
+          {/* 4. 수당 상세 */}
+          {showPay ? (
+            unitRates && allowancePay ? (
+              <section>
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <p className="text-[11px] font-semibold text-gray-500">
+                    수당 상세
+                    <span className="ml-1 font-normal text-gray-400">
+                      · 2026 단가
+                    </span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={resetAllowanceFromShifts}
+                    className="shrink-0 text-[10px] font-semibold text-accent"
+                  >
+                    근무표로 다시 채우기
+                  </button>
+                </div>
 
-                  <div className="grid grid-cols-3 gap-1.5">
+                <div className="rounded-xl border border-gray-100 dark:border-white/10">
+                  <p className="border-b border-gray-100 px-3 py-2 text-[10px] leading-relaxed text-gray-400 dark:border-white/10">
+                    집계: 시간외 {formatHoursLabel(shiftOt) || "0"}h · 야간(22~06){" "}
+                    {formatHoursLabel(shiftNight) || "0"}h · 휴일 {shiftHoliday}일
+                    · 아래에서 수정 가능
+                  </p>
+
+                  <div className="grid grid-cols-3 gap-2 px-3 py-2.5">
                     <label className="block min-w-0">
-                      <span className="mb-0.5 block text-center text-[10px] font-semibold text-emerald-800/80 dark:text-emerald-300/80">
-                        시간외(시간)
+                      <span className="mb-0.5 block text-center text-[10px] font-semibold text-gray-500">
+                        시간외(h)
                       </span>
                       <input
                         type="text"
                         inputMode="decimal"
                         value={otDraft}
                         onChange={(e) => setOtDraft(e.target.value)}
-                        className="w-full rounded-lg border border-emerald-300 bg-[#DCFCE7] px-1.5 py-1.5 text-center text-[12px] tabular-nums text-gray-900 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-400/40 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-gray-100"
+                        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-1.5 py-1.5 text-center text-[12px] tabular-nums text-gray-900 outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 dark:border-white/10 dark:bg-white/5 dark:text-gray-100"
                       />
-                      <p className="mt-0.5 text-center text-[9px] text-emerald-700/70 dark:text-emerald-400/70">
+                      <p className="mt-0.5 text-center text-[9px] text-gray-400">
                         × {formatWon(unitRates.overtime)}
                       </p>
                     </label>
                     <label className="block min-w-0">
-                      <span className="mb-0.5 block text-center text-[10px] font-semibold text-emerald-800/80 dark:text-emerald-300/80">
-                        야간(시간)
+                      <span className="mb-0.5 block text-center text-[10px] font-semibold text-gray-500">
+                        야간(h)
                       </span>
                       <input
                         type="text"
                         inputMode="decimal"
                         value={nightDraft}
                         onChange={(e) => setNightDraft(e.target.value)}
-                        className="w-full rounded-lg border border-emerald-300 bg-[#DCFCE7] px-1.5 py-1.5 text-center text-[12px] tabular-nums text-gray-900 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-400/40 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-gray-100"
+                        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-1.5 py-1.5 text-center text-[12px] tabular-nums text-gray-900 outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 dark:border-white/10 dark:bg-white/5 dark:text-gray-100"
                       />
-                      <p className="mt-0.5 text-center text-[9px] text-emerald-700/70 dark:text-emerald-400/70">
+                      <p className="mt-0.5 text-center text-[9px] text-gray-400">
                         × {formatWon(unitRates.night)}
                       </p>
                     </label>
                     <label className="block min-w-0">
-                      <span className="mb-0.5 block text-center text-[10px] font-semibold text-emerald-800/80 dark:text-emerald-300/80">
-                        휴일(일수)
+                      <span className="mb-0.5 block text-center text-[10px] font-semibold text-gray-500">
+                        휴일(일)
                       </span>
                       <input
                         type="text"
                         inputMode="numeric"
                         value={holidayDraft}
                         onChange={(e) => setHolidayDraft(e.target.value)}
-                        className="w-full rounded-lg border border-emerald-300 bg-[#DCFCE7] px-1.5 py-1.5 text-center text-[12px] tabular-nums text-gray-900 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-400/40 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-gray-100"
+                        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-1.5 py-1.5 text-center text-[12px] tabular-nums text-gray-900 outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 dark:border-white/10 dark:bg-white/5 dark:text-gray-100"
                       />
-                      <p className="mt-0.5 text-center text-[9px] text-emerald-700/70 dark:text-emerald-400/70">
+                      <p className="mt-0.5 text-center text-[9px] text-gray-400">
                         × {formatWon(unitRates.holiday)}
                       </p>
                     </label>
                   </div>
 
-                  <div className="mt-2.5 space-y-1 border-t border-emerald-200/70 pt-2 dark:border-emerald-500/20">
-                    <div className="flex justify-between text-[11px] text-emerald-900/80 dark:text-emerald-200/80">
+                  <div className="space-y-1 border-t border-gray-100 px-3 py-2.5 dark:border-white/10">
+                    <div className="flex justify-between text-[12px] text-gray-600 dark:text-gray-300">
                       <span>시간외수당</span>
-                      <span className="tabular-nums font-semibold">
+                      <span className="tabular-nums font-semibold text-gray-900 dark:text-gray-100">
                         {formatWon(allowancePay.overtimePay)}
                       </span>
                     </div>
-                    <div className="flex justify-between text-[11px] text-emerald-900/80 dark:text-emerald-200/80">
+                    <div className="flex justify-between text-[12px] text-gray-600 dark:text-gray-300">
                       <span>야간수당</span>
-                      <span className="tabular-nums font-semibold">
+                      <span className="tabular-nums font-semibold text-gray-900 dark:text-gray-100">
                         {formatWon(allowancePay.nightPay)}
                       </span>
                     </div>
-                    <div className="flex justify-between text-[11px] text-emerald-900/80 dark:text-emerald-200/80">
+                    <div className="flex justify-between text-[12px] text-gray-600 dark:text-gray-300">
                       <span>휴일수당</span>
-                      <span className="tabular-nums font-semibold">
+                      <span className="tabular-nums font-semibold text-gray-900 dark:text-gray-100">
                         {formatWon(allowancePay.holidayPay)}
                       </span>
                     </div>
-                    <div className="flex justify-between pt-1 text-sm font-bold text-emerald-900 dark:text-emerald-200">
-                      <span>수당 합계</span>
-                      <span className="tabular-nums">
+                    <div className="flex justify-between border-t border-dashed border-gray-200 pt-1.5 text-[13px] font-bold text-gray-900 dark:border-white/15 dark:text-gray-100">
+                      <span>② 수당 합계</span>
+                      <span className="tabular-nums text-accent">
                         {formatWon(allowancePay.total)}
                       </span>
                     </div>
                   </div>
-                  <p className="mt-2 text-[10px] leading-relaxed text-emerald-800/70 dark:text-emerald-400/70">
-                    · 시간외: 추가시간 합 × 단가
-                    <br />
-                    · 야간: 22:00~06:00 겹침 시간 × 단가 (야간 1회≈8시간)
-                    <br />
-                    · 휴일: 공휴일·일요일 근무 1일 × 일당
+
+                  <p className="border-t border-gray-100 px-3 py-2 text-[10px] leading-relaxed text-gray-400 dark:border-white/10">
+                    시간외=추가시간 합 · 야간=본근무+추가(시작전/종료후)의
+                    22~06 겹침 · 휴일=공휴일·일요일 근무 일수
                   </p>
                 </div>
-              ) : salaryProfile ? (
-                <div className="rounded-2xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 text-[11px] leading-relaxed text-amber-900/80 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200/80">
-                  현재 계급({profileLabel})은 2026 시간외 단가표(경정~순경)에
-                  없어요. 설정 → 내 계급·호봉에서 경정~순경(또는 소방
-                  대응계급)으로 바꿔 주세요.
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 text-[11px] leading-relaxed text-amber-900/80 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200/80">
-                  설정 → 내 계급·호봉을 먼저 지정하면 기본급·수당이 계산돼요.
-                </div>
-              )}
+              </section>
+            ) : salaryProfile ? (
+              <div className="rounded-xl border border-amber-200/80 bg-amber-50/70 px-3 py-2.5 text-[11px] leading-relaxed text-amber-900/80 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200/80">
+                현재 계급({profileLabel})은 2026 시간외 단가표(경정~순경)에
+                없어요. 설정 → 내 계급·호봉에서 경정~순경(또는 소방
+                대응계급)으로 바꿔 주세요.
+              </div>
+            ) : null
+          ) : null}
 
-              <details className="rounded-2xl border border-gray-100 bg-gray-50/50 px-4 py-3 dark:border-white/10 dark:bg-white/5">
-                <summary className="cursor-pointer text-[11px] font-semibold text-gray-500">
-                  참고 · 통상시급 × 근무시간 ({formatWon(pay.estimated)})
-                </summary>
-                <p className="mt-2 text-[10px] leading-relaxed text-gray-400">
-                  총 {formatHoursLabel(totalHours) || "0"}시간 × 설정 시급
-                  환산값이에요. 위 &quot;예상 수령액&quot;(기본급+수당)과는 다른
-                  참고용 지표입니다.
-                </p>
-              </details>
-            </div>
+          {showPay ? (
+            <details className="rounded-xl border border-gray-100 px-3 py-2 dark:border-white/10">
+              <summary className="cursor-pointer text-[11px] font-semibold text-gray-400">
+                참고 · 통상시급 × 근무시간 ({formatWon(pay.estimated)})
+              </summary>
+              <p className="mt-1.5 text-[10px] leading-relaxed text-gray-400">
+                총 {formatHoursLabel(totalHours) || "0"}시간 × 설정 시급
+                환산값이에요. 위 예상 수령액(기본급+수당)과는 다른 참고용
+                지표입니다.
+              </p>
+            </details>
           ) : null}
         </div>
 

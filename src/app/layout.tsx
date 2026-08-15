@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Noto_Sans_KR } from "next/font/google";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { NativeAppBridge } from "@/components/NativeAppBridge";
+import { APP_NAME, APP_SHORT_NAME, APP_TAGLINE } from "@/lib/legal";
 import "./globals.css";
 
 const notoSansKr = Noto_Sans_KR({
@@ -12,13 +13,13 @@ const notoSansKr = Noto_Sans_KR({
 });
 
 export const metadata: Metadata = {
-  title: "넴쿵 교대근무표",
-  description: "경찰·소방 공무원 전용 교대근무표 · 멋진여자 박네모",
-  applicationName: "넴쿵 교대근무표",
+  title: APP_NAME,
+  description: APP_TAGLINE,
+  applicationName: APP_NAME,
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "넴쿵 교대근무표",
+    title: APP_SHORT_NAME,
   },
   formatDetection: {
     telephone: false,
@@ -48,7 +49,7 @@ export const viewport: Viewport = {
 };
 
 /** 첫 페인트 전 테마 적용 (깜빡임 방지) */
-const themeBootScript = `(function(){try{var t=localStorage.getItem('shift-calendar-theme');var dark=t==='dark';if(t==='schedule'){var light=true;try{var s=JSON.parse(localStorage.getItem('shift-calendar-theme-schedule')||'{}');var a=String(s.lightStart||'07:00').split(':');var b=String(s.lightEnd||'19:00').split(':');var sm=(+a[0]||0)*60+(+a[1]||0);var em=(+b[0]||0)*60+(+b[1]||0);var n=new Date();var nm=n.getHours()*60+n.getMinutes();if(sm===em)light=true;else if(sm<em)light=nm>=sm&&nm<em;else light=nm>=sm||nm<em;}catch(e){}dark=!light;}if(dark){document.documentElement.classList.add('dark');document.documentElement.style.colorScheme='dark';}else{document.documentElement.style.colorScheme='light';}}catch(e){}})();`;
+const themeBootScript = `(function(){try{var ag=localStorage.getItem('shift-calendar-agency');if(ag==='fire'||ag==='police'){document.documentElement.dataset.agency=ag;}else{document.documentElement.dataset.agency='police';}var t=localStorage.getItem('shift-calendar-theme');var dark=t==='dark';if(t==='schedule'){var light=true;try{var s=JSON.parse(localStorage.getItem('shift-calendar-theme-schedule')||'{}');var a=String(s.lightStart||'07:00').split(':');var b=String(s.lightEnd||'19:00').split(':');var sm=(+a[0]||0)*60+(+a[1]||0);var em=(+b[0]||0)*60+(+b[1]||0);var n=new Date();var nm=n.getHours()*60+n.getMinutes();if(sm===em)light=true;else if(sm<em)light=nm>=sm&&nm<em;else light=nm>=sm||nm<em;}catch(e){}dark=!light;}if(dark){document.documentElement.classList.add('dark');document.documentElement.style.colorScheme='dark';}else{document.documentElement.style.colorScheme='light';}}catch(e){}})();`;
 
 export default function RootLayout({
   children,
@@ -62,7 +63,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="넴쿵 교대근무표" />
+        <meta name="apple-mobile-web-app-title" content={APP_SHORT_NAME} />
       </head>
       <body className="min-h-full bg-background font-sans text-foreground">
         <ThemeProvider>

@@ -3,15 +3,42 @@
 /* class 기반 다크모드 (.dark on <html>) */
 @custom-variant dark (&:where(.dark, .dark *));
 
-:root {
-  --background: #f2f2f7;
-  --foreground: #111827;
-  --apple-blue: #007aff;
-  --shift-day: #ff9500;
-  --shift-night: #1b3a5f;
-  --shift-overnight: #0f2744;
+:root,
+html[data-agency="police"] {
+  --background: #eff6ff;
+  --foreground: #0f172a;
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --accent-soft: #dbeafe;
+  --hero-from: #0c1f3d;
+  --hero-via: #1e3a8a;
+  --hero-to: #172554;
+  --header-surface: rgba(239, 246, 255, 0.92);
+  --apple-blue: var(--accent);
+  --shift-day: #2563eb;
+  --shift-night: #1e3a8a;
+  --shift-overnight: #172554;
   --surface: #ffffff;
-  --surface-muted: #f9fafb;
+  --surface-muted: #f8fafc;
+  color-scheme: light;
+}
+
+html[data-agency="fire"] {
+  --background: #fff1f2;
+  --foreground: #1f2937;
+  --accent: #dc2626;
+  --accent-strong: #b91c1c;
+  --accent-soft: #fee2e2;
+  --hero-from: #450a0a;
+  --hero-via: #991b1b;
+  --hero-to: #7f1d1d;
+  --header-surface: rgba(255, 241, 242, 0.92);
+  --apple-blue: var(--accent);
+  --shift-day: #2563eb;
+  --shift-night: #1e3a8a;
+  --shift-overnight: #172554;
+  --surface: #ffffff;
+  --surface-muted: #fff7f7;
   color-scheme: light;
 }
 
@@ -20,12 +47,24 @@
   --foreground: #f3f4f6;
   --surface: #161b22;
   --surface-muted: #1c232d;
+  --header-surface: rgba(11, 15, 20, 0.92);
   color-scheme: dark;
+}
+
+html[data-agency="police"].dark {
+  --background: #0b1220;
+}
+
+html[data-agency="fire"].dark {
+  --background: #180a0a;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
   --font-sans: var(--font-noto), ui-sans-serif, system-ui, sans-serif;
 }
 
